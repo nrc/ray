@@ -10,10 +10,7 @@
 "use strict";
 
 // TODO - next
-// other objects
-//   tori
 // fog/attenuation
-// non-point lights
 // optimise?
 // type script
 
@@ -34,8 +31,8 @@ function init() {
     objects.push(new Sphere(new Point(100, 0, 0), 20, blue_plastic()));
     objects.push(new Polygon(new Point(150, -50, 250), new Point(150, -50, -150), new Point(-150, -50, -150), mirror()));
 
-    lights.push(new PointLight(new Point(100, 150, 0), new Colour(0.7, 0.7, 0.7)));
-    // lights.push(new SphereLight(new Point(100, 150, 0), 10, new Colour(0.7, 0.7, 0.7)));
+    // lights.push(new PointLight(new Point(100, 150, 0), new Colour(0.7, 0.7, 0.7)));
+    lights.push(new SphereLight(new Point(100, 150, 0), 20, new Colour(0.7, 0.7, 0.7)));
     // lights.push(new PointLight(new Point(-150, 0, -150), new Colour(0.5, 0.5, 0.5)));
 }
 
@@ -130,28 +127,12 @@ function trace(ray, depth) {
         result.add(mult_colours(material.reflected, reflected));
 
         for (let light of lights) {
-            let light_vec = subtract_points(light.from, intersection.point).normalise();
-            let light_ray = new Ray(intersection.point, light_vec);
-            if (intersects(light_ray)) {
-                // In shadow.
-                continue;
-            }
-
-            let diffuse_dot = dot(light_vec, intersection.normal);
-            if (diffuse_dot <= 0) {
-                // Facing away from light.
-                continue;
-            }
-            let diffuse = mult_colour_scalar(material.diffuse, diffuse_dot).mult(light.colour);
-            result.add(diffuse);
-
-            // Only compte specular illumination for primary rays.
+            // Only compute specular illumination for primary rays.
+            let view_vec = null;
             if (depth == 0) {
-                let light_reflect_vec = subtract_points(intersection.normal, light_vec).mult_scalar(dot(light_vec, intersection.normal) * 2);
-                let specular_dot = Math.min(1, Math.max(0, dot(mult_point_scalar(ray.direction, -1), light_reflect_vec)));
-                let specular = mult_colour_scalar(material.specular, Math.pow(specular_dot, material.shininess)).mult(light.colour);
-                result.add(specular);
+                view_vec = ray.direction;
             }
+            result.add(light.illuminate(intersection.point, intersection.normal, material, view_vec));
         }
 
         return result;
@@ -369,11 +350,11 @@ function Material(diffuse, specular, ambient, reflected, shininess) {
 }
 
 function red_plastic() {
-    return new Material(red(), grey(), red(), grey(), 8);
+    return new Material(red(), grey(), red(), dark_grey(), 8);
 }
 
 function blue_plastic() {
-    return new Material(blue(), grey(), blue(), grey(), 8);
+    return new Material(blue(), grey(), blue(), dark_grey(), 8);
 }
 
 function mirror() {
@@ -440,6 +421,7 @@ function Sphere(center, r, material) {
         this.center.translate(v);
     }
 
+    // Note that this won't apply scales properly.
     this.transform = function(m) {
         this.center.post_mult(m);
     }
@@ -492,7 +474,6 @@ function Polygon(p1, p2, p3, material) {
             return null;
         }
 
-        // TODO only getting ambient, so I guess normal is wrong?
         return {
             object: this,
             point: point,
@@ -517,6 +498,35 @@ function Polygon(p1, p2, p3, material) {
 function PointLight(from, colour) {
     this.from = from;
     this.colour = colour;
+
+    // If view_vec is null, illuminate will not take account of specular illumination.
+    this.illuminate = function(point, normal, material, view_vec) {
+        let result = black();
+
+        let light_vec = subtract_points(this.from, point).normalise();
+        let light_ray = new Ray(point, light_vec);
+        if (intersects(light_ray)) {
+            // In shadow.
+            return result;
+        }
+
+        let diffuse_dot = dot(light_vec, normal);
+        if (diffuse_dot <= 0) {
+            // Facing away from light.
+            return result;
+        }
+        let diffuse = mult_colour_scalar(material.diffuse, diffuse_dot).mult(this.colour);
+        result.add(diffuse);
+
+        if (view_vec) {
+            let light_reflect_vec = subtract_points(normal, light_vec).mult_scalar(dot(light_vec, normal) * 2);
+            let specular_dot = Math.min(1, Math.max(0, dot(mult_point_scalar(view_vec, -1), light_reflect_vec)));
+            let specular = mult_colour_scalar(material.specular, Math.pow(specular_dot, material.shininess)).mult(this.colour);
+            result.add(specular);
+        }
+
+        return result;
+    }
 }
 
 function SphereLight(from, radius, colour) {
@@ -524,6 +534,58 @@ function SphereLight(from, radius, colour) {
     this.radius = radius;
     this.colour = colour;
     this.samples = 16;
+
+    // If view_vec is null, illuminate will not take account of specular illumination.
+    this.illuminate = function(point, normal, material, view_vec) {
+        let result = black();
+
+        for (let i = 0; i < this.samples; ++i) {
+            let light_point = this.random_point();
+            let light_vec = subtract_points(light_point, point).normalise();
+            let light_ray = new Ray(point, light_vec);
+            if (intersects(light_ray)) {
+                // In shadow.
+                continue;
+            }
+
+            let diffuse_dot = dot(light_vec, normal);
+            if (diffuse_dot <= 0) {
+                // Facing away from light.
+                continue;
+            }
+            let diffuse = mult_colour_scalar(material.diffuse, diffuse_dot / this.samples).mult(this.colour);
+            result.add(diffuse);
+
+            // Could compute a specular component, but seems expensive and maybe inappropriate.
+        }
+
+        return result;
+    }
+
+    // Return a random point on the surface of the sphere.
+    this.random_point = function() {
+        while (true) {
+            // Compute a random point in an axis-aligned cube at the origin, covering -1 to 1.
+            let dx = Math.random() * 2 - 1;
+            let dy = Math.random() * 2 - 1;
+            let dz = Math.random() * 2 - 1;
+
+            // Check if our random point is in the sphere (happens apx 50% of the time).
+            let sum = dx * dx + dy * dy + dz * dz;
+            if (sum <= 1) {
+                // Project the point in the sphere on to the surface by normalising.
+                let sqrt_sum = Math.pow(sum, 0.5);
+                dx /= sqrt_sum;
+                dy /= sqrt_sum;
+                dz /= sqrt_sum;
+
+                // Scale and translate to the desired sphere.
+                return new Point(this.from.x + dx * this.radius,
+                                 this.from.y + dy * this.radius,
+                                 this.from.z + dz * this.radius);
+            }
+        }
+    }
 }
 </script>
 </html>
