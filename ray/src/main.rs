@@ -1,66 +1,72 @@
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>ray tracer</title>
-</head>
-<body>
-    <canvas id="canvas" width="400" height="400">no canvas?</canvas>
-</body>
-<script>
-"use strict";
+extern crate image;
 
-// TODO - next
-// BUG - shadowing behind light
-// render non-point lights
-// fog
-// optimise?
-// type script
-// depth of field
-// refraction
+use image::ColorType;
+use image::png::PNGEncoder;
 
-let ray_depth = 4;
-let super_samples = 2;
+use std::env;
+use std::fs::File;
 
-let objects = [];
-let lights = [];
-let ambient_light = { colour: new Colour(0.2, 0.2, 0.2) };
-let eye = { from: new Point(0, 0, -300), at: new Point(0, 0, 0), length: 50, width: 50, height: 50 };
-let background = black();
+const RAY_DEPTH: u8 = 4;
+const SUPER_SAMPLES: u8 = 2;
 
-init();
-render();
 
-function init() {
+fn init() -> Scene {
+    let mut objects = vec![];
+    let mut lights = vec![];
+
     // objects.push(new Sphere(new Point(20, 20, 0), 20, red_plastic()));
-    objects.push(new Sphere(new Point(-100, 0, 0), 40, blue_plastic()));
-    objects.push(new Sphere(new Point(30, 0, 0), 20, blue_plastic()));
+    objects.push(Object::Sphere(Point(-100, 0, 0), 40, Material::blue_plastic()));
+    objects.push(Object::Sphere(Point(30, 0, 0), 20, Material::blue_plastic()));
     // objects.push(new Polygon(new Point(150, -50, 250), new Point(150, -50, -150), new Point(-150, -50, -150), mirror()));
 
     // attenuation: { distance: 500, moderation: 0.5 }
-    lights.push(new PointLight(new Point(0, 0, 0), new Colour(0.7, 0.7, 0.7), null));
+    lights.push(Light::PointLight(Point(0, 0, 0), Colour(0.7, 0.7, 0.7), null));
     // lights.push(new SphereLight(new Point(100, 150, 0), 20, new Colour(0.7, 0.7, 0.7)));
     // lights.push(new PointLight(new Point(-150, 0, -150), new Colour(0.5, 0.5, 0.5), null));
+
+    Scene {
+        objects: objects,
+        lights: lights
+        ambient_light: Colour(0.2, 0.2, 0.2),
+        eye: Eye {
+            from: Point::new(0, 0, -300),
+            at: Point::new(0, 0, 0),
+            length: 50,
+            width: 50,
+            height: 50,
+        },
+        background: Colour::black(),
+    }
 }
 
-function render() {
-    let canvas = document.getElementById("canvas");
-    let ctx = canvas.getContext("2d");
-    let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let data = imageData.data;
+struct Rendered {
+    data: Vec<u8>,
+    width: usize,
+    height: usize,
+}
 
-    let t1 = performance.now();
-    world_transform();
+impl Rendered {
+    fn new(width: usize, height: usize) -> Rendered {
+        Rendered {
+            data = vec![u8; width + height * 4],
+            width: width,
+            height: height,
+        }
+    }
+}
 
-    let t2 = performance.now();
-    render_data(data, canvas.width, canvas.height);
+fn render(mut scene: Scene) -> Rendered {
+    let mut result = Rendered::new(400, 400);
 
-    let t3 = performance.now();
-    ctx.putImageData(imageData, 0, 0);
-    let t4 = performance.now();
+    world_transform(&mut scene);
 
-    console.log("transform: " + (t2 - t1) + "ms");
-    console.log("rendering: " + (t3 - t2) + "ms");
-    console.log("write to canvas: " + (t4 - t3) + "ms");
+    scene.render(&scene, &mut result);
+
+    // println!("transform: " + (t2 - t1) + "ms");
+    // println!("rendering: " + (t3 - t2) + "ms");
+    // println!("write to canvas: " + (t4 - t3) + "ms");
+
+    result
 }
 
 // Here we do some transforms to the world to make it easier to render.
@@ -115,7 +121,7 @@ function world_transform() {
 
 // Returns a colour.
 function trace(ray, depth) {
-    if (depth >= ray_depth) {
+    if (depth >= RAY_DEPTH) {
         return black();
     }
 
@@ -165,41 +171,43 @@ function intersects(ray) {
     return results[0];
 }
 
-function render_data(data, width, height) {
-    // We must translate and scale the pixel on to the image plane.
-    let trans_x = width / 2;
-    let trans_y = height / 2;
-    let scale_x = eye.width / width;
-    let scale_y = -eye.height / height;
+impl Scene {
+    fn render(&self, dest: &mut Rendered) {
+        // We must translate and scale the pixel on to the image plane.
+        let trans_x = dest.width / 2;
+        let trans_y = dest.height / 2;
+        let scale_x = self.eye.width / dest.width;
+        let scale_y = -self.eye.height / dest.height;
 
-    let sub_const = super_samples * 2;
-    let sub_pixel_x = scale_x / sub_const;
-    let sub_pixel_y = scale_y / sub_const;
+        let sub_const = SUPER_SAMPLES * 2;
+        let sub_pixel_x = scale_x / sub_const;
+        let sub_pixel_y = scale_y / sub_const;
 
-    for (let y = 0; y < height; y += 1) {
-        let image_y = (y - trans_y) * scale_y;
-        for (let x = 0; x < width; x += 1) {
-            let image_x = (x - trans_x) * scale_x;
+        for (let y = 0; y < height; y += 1) {
+            let image_y = (y - trans_y) * scale_y;
+            for (let x = 0; x < width; x += 1) {
+                let image_x = (x - trans_x) * scale_x;
 
-            // Super-sampling.
-            let points = []
-            let yy = image_y - (scale_y / 2);
-            for (let sy = 0; sy < super_samples; sy += 1) {
-                let xx = image_x - (scale_x / 2);
-                for (let sx = 0; sx < super_samples; sx += 1) {
-                    points.push(new Point(xx, yy, eye.length))
-                    xx += sub_pixel_x;
+                // Super-sampling.
+                let points = []
+                let yy = image_y - (scale_y / 2);
+                for (let sy = 0; sy < SUPER_SAMPLES; sy += 1) {
+                    let xx = image_x - (scale_x / 2);
+                    for (let sx = 0; sx < SUPER_SAMPLES; sx += 1) {
+                        points.push(new Point(xx, yy, eye.length))
+                        xx += sub_pixel_x;
+                    }
+                    yy += sub_pixel_y;
                 }
-                yy += sub_pixel_y;
-            }
 
-            let sum = new Colour(0, 0, 0);
-            for (let p of points) {
-                // Note that due to the world transform, eye.from is the origin.
-                let ray = new Ray(eye.from, p.normalise());
-                sum.add(trace(ray, 0));
+                let sum = new Colour(0, 0, 0);
+                for (let p of points) {
+                    // Note that due to the world transform, eye.from is the origin.
+                    let ray = new Ray(eye.from, p.normalise());
+                    sum.add(trace(ray, 0));
+                }
+                setPixel(x, y, data, width, sum.mult_scalar(1 / (SUPER_SAMPLES * SUPER_SAMPLES)));
             }
-            setPixel(x, y, data, width, sum.mult_scalar(1 / (super_samples * super_samples)));
         }
     }
 }
@@ -623,5 +631,38 @@ function SphereLight(from, radius, colour) {
         }
     }
 }
-</script>
-</html>
+
+struct Scene {
+    objects: Vec<Object>,
+    lights: Vec<Light>,
+    ambient_light: Colour,
+    eye: Eye,
+    background: Colour,
+}
+
+struct Eye {
+    from: Point,
+    at: Point,
+    length: f64,
+    width: f64,
+    height: f64,
+}
+
+fn run(file_name: &str) {
+    let scene = init();
+    let data = render(scene);
+
+    let file = File::create(file_name).unwrap();
+    let encoder = PNGEncoder::new(file);
+    encoder.encode(&data.data, data.width, data.height, ColorType::RGBA(8)).unwrap();
+}
+
+fn main() {
+    let args: Vec<_> = env::args().collect();
+    if args.len() < 2 {
+        println!("Requires a single argument - the name of the file to emit");
+        return;
+    }
+
+    run(&args[1])
+}
