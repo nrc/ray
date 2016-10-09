@@ -15,12 +15,12 @@ fn init() -> Scene {
     let mut lights = vec![];
 
     // objects.push(new Sphere(new Point(20, 20, 0), 20, red_plastic()));
-    objects.push(Object::Sphere(Point(-100, 0, 0), 40, Material::blue_plastic()));
-    objects.push(Object::Sphere(Point(30, 0, 0), 20, Material::blue_plastic()));
+    objects.push(Object::Sphere(Sphere::new(Point::new(-100, 0, 0), 40, Material::blue_plastic())));
+    objects.push(Object::Sphere(Sphere::new(Point::new(30, 0, 0), 20, Material::blue_plastic())));
     // objects.push(new Polygon(new Point(150, -50, 250), new Point(150, -50, -150), new Point(-150, -50, -150), mirror()));
 
     // attenuation: { distance: 500, moderation: 0.5 }
-    lights.push(Light::PointLight(Point(0, 0, 0), Colour(0.7, 0.7, 0.7), null));
+    lights.push(Light::Point(PointLight::new(Point::new(0, 0, 0), Colour::new(0.7, 0.7, 0.7), None)));
     // lights.push(new SphereLight(new Point(100, 150, 0), 20, new Colour(0.7, 0.7, 0.7)));
     // lights.push(new PointLight(new Point(-150, 0, -150), new Colour(0.5, 0.5, 0.5), null));
 
@@ -53,6 +53,14 @@ impl Rendered {
             height: height,
         }
     }
+
+    fn set_pixel(&mut self, x: usize, y: usize, colour: &Colour) {
+        let offset = 4 * (x + y * self.width);
+        self.data[offset] = Math.min(colour.r * 255, 255);
+        self.data[offset + 1] = Math.min(colour.g * 255, 255);
+        self.data[offset + 2] = Math.min(colour.b * 255, 255);
+        self.data[offset + 3] = 255;
+    }
 }
 
 fn render(mut scene: Scene) -> Rendered {
@@ -70,17 +78,18 @@ fn render(mut scene: Scene) -> Rendered {
 }
 
 // Here we do some transforms to the world to make it easier to render.
-function world_transform() {
+fn world_transform(scene: &mut Scene) {
     // Translate the world so that eye.from is at the origin.
-    for (let o of objects) {
-        o.translate(eye.from);
+    let from = scene.eye.from;
+    for o in &mut scene.objects {
+        o.translate(from);
     }
-    for (let l of lights) {
-        l.from.translate(eye.from);
+    for l in &mut scene.lights {
+        l.from.translate(from);
     }
-    eye.at.translate(eye.from);
+    scene.eye.at.translate(from);
     // Should be (0, 0, 0);
-    eye.from.translate(eye.from);
+    scene.eye.from.translate(from);
 
     // console.log("translate");
     // console.log(object.center);
@@ -90,25 +99,25 @@ function world_transform() {
 
     // Rotate the world so that eye.at is on the z-axis (i.e., eye.at.x == eye.at.y == 0).
     // Compute the rotation matrix.
-    let sqrt_ax_sq_plus_az_sq = Math.sqrt(eye.at.x * eye.at.x + eye.at.z * eye.at.z);
-    let sqrt_ax_sq_plus_ay_sq_plus_az_sq = Math.sqrt(eye.at.x * eye.at.x + eye.at.y * eye.at.y + eye.at.z * eye.at.z);
+    let sqrt_ax_sq_plus_az_sq = Math.sqrt(scene.eye.at.x * scene.eye.at.x + scene.eye.at.z * scene.eye.at.z);
+    let sqrt_ax_sq_plus_ay_sq_plus_az_sq = Math.sqrt(scene.eye.at.x * scene.eye.at.x + scene.eye.at.y * scene.eye.at.y + scene.eye.at.z * scene.eye.at.z);
 
-    let sin_tilt = eye.at.y / sqrt_ax_sq_plus_ay_sq_plus_az_sq;
+    let sin_tilt = scene.eye.at.y / sqrt_ax_sq_plus_ay_sq_plus_az_sq;
     let cos_tilt = sqrt_ax_sq_plus_az_sq / sqrt_ax_sq_plus_ay_sq_plus_az_sq;
-    let sin_pan = eye.at.x / sqrt_ax_sq_plus_az_sq;
-    let cos_pan = eye.at.z / sqrt_ax_sq_plus_az_sq;
+    let sin_pan = scene.eye.at.x / sqrt_ax_sq_plus_az_sq;
+    let cos_pan = scene.eye.at.z / sqrt_ax_sq_plus_az_sq;
 
     let rot_at_matrix = [[cos_tilt * cos_pan, -sin_tilt, cos_tilt * sin_pan],
                          [sin_tilt * cos_pan, cos_tilt, sin_tilt * sin_pan],
                          [-sin_pan, 0, cos_pan]];
 
-    for (let o of objects) {
-        o.transform(rot_at_matrix);
+    for o in &mut scene.objects {
+        o.transform(&rot_at_matrix);
     }
-    for (let l of lights) {
-        l.from.post_mult(rot_at_matrix);
+    for l in &mut scene.lights {
+        l.from.post_mult(&rot_at_matrix);
     }
-    eye.at.post_mult(rot_at_matrix);
+    scene.eye.at.post_mult(&rot_at_matrix);
 
     // console.log("rotate");
     // console.log(object.center);
@@ -119,56 +128,46 @@ function world_transform() {
     // At this stage we are looking directly down the Z-axis from the origin to positive infinity.
 }
 
-// Returns a colour.
-function trace(ray, depth) {
-    if (depth >= RAY_DEPTH) {
-        return black();
+fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
+    if depth >= RAY_DEPTH {
+        return Colour::black();
     }
 
-    let intersection = intersects(ray);
-    if (intersection) {
-        let material = intersection.object.material;
-        let result = black();
+    match intersects(scene, ray) {
+        Some(intersection) => {
+            let material = intersection.object.material;
+            let mut result = black();
 
-        let ambient = mult_colours(material.ambient, ambient_light.colour);
-        result.add(ambient);
+            let ambient = mult_colours(material.ambient, ambient_light.colour);
+            result.add(ambient);
 
-        let reflect_vec = subtract_points(ray.direction, mult_point_scalar(intersection.normal, dot(ray.direction, intersection.normal) * 2));
-        let reflect_ray = new Ray(intersection.point, reflect_vec);
-        let reflected = trace(reflect_ray, depth + 1);
-        result.add(mult_colours(material.reflected, reflected));
+            let reflect_vec = subtract_points(ray.direction, mult_point_scalar(intersection.normal, dot(ray.direction, intersection.normal) * 2));
+            let reflect_ray = new Ray(intersection.point, reflect_vec);
+            let reflected = trace(reflect_ray, depth + 1, scene);
+            result.add(mult_colours(material.reflected, reflected));
 
-        for (let light of lights) {
-            // Only compute specular illumination for primary rays.
-            let view_vec = null;
-            if (depth == 0) {
-                view_vec = ray.direction;
+            for light in &scene.lights {
+                // Only compute specular illumination for primary rays.
+                let view_vec = if depth == 0 {
+                    Some(ray.direction)
+                } else {
+                    None
+                };
+                result.add(light.illuminate(intersection.point, intersection.normal, material, view_vec));
             }
-            result.add(light.illuminate(intersection.point, intersection.normal, material, view_vec));
-        }
 
-        return result;
-    } else {
-        return background;
+            result
+        }
+        None => scene.background,
     }
 }
 
-function intersects(ray) {
-    let results = [];
-    for (let o of objects) {
-        let i = o.intersects(ray);
-        if (i) {
-            results.push(i);
-        }
-    }
+fn intersects(scene: &Scene, ray: Ray) -> Option<Intersection> {
+    let mut results = scene.objects.iter().filter_map(|o| o.intersects(ray)).collect();
 
-    if (results.length == 0) {
-        return null;
-    }
+    results.sort();
 
-    results.sort((a, b) => a.t - b.t);
-
-    return results[0];
+    results.get(0)
 }
 
 impl Scene {
@@ -183,432 +182,536 @@ impl Scene {
         let sub_pixel_x = scale_x / sub_const;
         let sub_pixel_y = scale_y / sub_const;
 
-        for (let y = 0; y < height; y += 1) {
+        for y in 0..dest.height {
             let image_y = (y - trans_y) * scale_y;
-            for (let x = 0; x < width; x += 1) {
+            for x in 0..dest.width {
                 let image_x = (x - trans_x) * scale_x;
 
                 // Super-sampling.
-                let points = []
+                let mut points = vec![];
                 let yy = image_y - (scale_y / 2);
-                for (let sy = 0; sy < SUPER_SAMPLES; sy += 1) {
+                for sy in 0..SUPER_SAMPLES {
                     let xx = image_x - (scale_x / 2);
-                    for (let sx = 0; sx < SUPER_SAMPLES; sx += 1) {
-                        points.push(new Point(xx, yy, eye.length))
+                    for sx in 0..SUPER_SAMPLES {
+                        points.push(new Point(xx, yy, self.eye.length))
                         xx += sub_pixel_x;
                     }
                     yy += sub_pixel_y;
                 }
 
-                let sum = new Colour(0, 0, 0);
-                for (let p of points) {
+                let mut sum = Colour::black();
+                for p in &points {
                     // Note that due to the world transform, eye.from is the origin.
-                    let ray = new Ray(eye.from, p.normalise());
+                    let ray = Ray::new(self.eye.from, p.normalise());
                     sum.add(trace(ray, 0));
                 }
-                setPixel(x, y, data, width, sum.mult_scalar(1 / (SUPER_SAMPLES * SUPER_SAMPLES)));
+                dest.setPixel(x, y, sum.mult_scalar(1 / (SUPER_SAMPLES * SUPER_SAMPLES)));
             }
         }
     }
 }
 
-function setPixel(x, y, data, canvas_width, colour) {
-    let offset = 4 * (x + y * canvas_width);
-    data[offset] = Math.min(colour.r * 255, 255);
-    data[offset + 1] = Math.min(colour.g * 255, 255);
-    data[offset + 2] = Math.min(colour.b * 255, 255);
-    data[offset + 3] = 255;
+type Matrix = [[f64; 3]; 3];
+
+fn mult_point_scalar(point: Point, scalar: f64) -> Point {
+    Point::new(point.x * scalar,
+               point.y * scalar,
+               point.z * scalar)
 }
 
-function mult_point_scalar(point, scalar) {
-    return new Point(point.x * scalar,
-                     point.y * scalar,
-                     point.z * scalar);
+fn add_points(a: Point, b: Point) -> Point {
+    Point::new(a.x + b.x,
+               a.y + b.y,
+               a.z + b.z)
 }
 
-function add_points(a, b) {
-    return new Point(a.x + b.x,
-                     a.y + b.y,
-                     a.z + b.z);
+fn subtract_points(a: Point, b: Point) -> Point {
+    Point::new(a.x - b.x,
+               a.y - b.y,
+               a.z - b.z)
 }
 
-function subtract_points(a, b) {
-    return new Point(a.x - b.x,
-                     a.y - b.y,
-                     a.z - b.z);
+fn dot(a: Point, b: Point) -> f64 {
+    a.x * b.x +
+    a.y * b.y +
+    a.z * b.z
 }
 
-function dot(a, b) {
-    return a.x * b.x +
-           a.y * b.y +
-           a.z * b.z;
+fn cross(a: Point, b: Point) -> Point {
+    Point::new(a.y * b.z - a.z * b.y,
+               a.z * b.x - a.x * b.z,
+               a.x * b.y - a.y * b.x)
 }
 
-function cross(a, b) {
-    return new Point(a.y * b.z - a.z * b.y,
-                     a.z * b.x - a.x * b.z,
-                     a.x * b.y - a.y * b.x);
+fn mult_colours(a: Colour, b: Colour) -> Colour {
+    Colour::new(a.r * b.r,
+                a.g * b.g,
+                a.b * b.b)
 }
 
-function mult_colours(a, b) {
-    return new Colour(a.r * b.r,
-                      a.g * b.g,
-                      a.b * b.b);
+fn mult_colour_scalar(colour: Colour, scalar: f64) -> Colour {
+    Colour::new(colour.r * scalar,
+                colour.g * scalar,
+                colour.b * scalar)
 }
 
-function mult_colour_scalar(colour, scalar) {
-    return new Colour(colour.r * scalar,
-                      colour.g * scalar,
-                      colour.b * scalar);
+fn add_colours(a: Colour, b: Colour) -> Colour {
+    Colour::new(a.r + b.r,
+                a.g + b.g,
+                a.b + b.b)
 }
 
-function add_colours(a, b) {
-    return new Colour(a.r + b.r,
-                      a.g + b.g,
-                      a.b + b.b);
+#[derive(Debug, Clone, Copy, new)]
+struct Point {
+    x: f64, y: f64, z: f64
 }
 
+impl Point {
+    fn translate(&mut self, by) -> &Point {
+        self.x -= by.x;
+        self.y -= by.y;
+        self.z -= by.z;
 
-function Point(x, y, z) {
-    this.x = x;
-    this.y = y;
-    this.z = z;
-
-    this.translate = function(by) {
-        this.x -= by.x;
-        this.y -= by.y;
-        this.z -= by.z;
-
-        return this;
+        self
     };
 
-    this.add = function(other) {
-        this.x += other.x;
-        this.y += other.y;
-        this.z += other.z;
+    fn add(&mut self, other) -> &Point {
+        self.x += other.x;
+        self.y += other.y;
+        self.z += other.z;
 
-        return this;
+        self
     };
 
-    this.post_mult = function(matrix) {
-        let new_x = this.x * matrix[0][0] + this.y * matrix[1][0] + this.z * matrix[2][0];
-        let new_y = this.x * matrix[0][1] + this.y * matrix[1][1] + this.z * matrix[2][1];
-        let new_z = this.x * matrix[0][2] + this.y * matrix[1][2] + this.z * matrix[2][2];
+    fn post_mult(&mut self, matrix) -> &Point {
+        let new_x = self.x * matrix[0][0] + self.y * matrix[1][0] + self.z * matrix[2][0];
+        let new_y = self.x * matrix[0][1] + self.y * matrix[1][1] + self.z * matrix[2][1];
+        let new_z = self.x * matrix[0][2] + self.y * matrix[1][2] + self.z * matrix[2][2];
 
-        this.x = new_x;
-        this.y = new_y;
-        this.z = new_z;
+        self.x = new_x;
+        self.y = new_y;
+        self.z = new_z;
 
-        return this;
+        self
     };
 
-    this.mult_scalar = function(other) {
-        this.x *= other;
-        this.y *= other;
-        this.z *= other;
+    fn mult_scalar(&mut self, other) -> &Point {
+        self.x *= other;
+        self.y *= other;
+        self.z *= other;
 
-        return this;
+        self
     }
 
-    this.normalise = function() {
-        let magnitude = this.magnitude();
-        this.x /= magnitude;
-        this.y /= magnitude;
-        this.z /= magnitude;
+    fn normalise(&mut self) -> &Point {
+        let magnitude = self.magnitude();
+        self.x /= magnitude;
+        self.y /= magnitude;
+        self.z /= magnitude;
 
-        return this;
+        self
     }
 
-    this.magnitude = function() {
-        return Math.sqrt(Math.pow(this.x, 2) + Math.pow(this.y, 2) + Math.pow(this.z, 2));
-    }
-}
-
-function Colour(r, g, b) {
-    this.r = r;
-    this.g = g;
-    this.b = b;
-
-    this.add = function(other) {
-        this.r += other.r;
-        this.g += other.g;
-        this.b += other.b;
-
-        return this;
-    }
-
-    this.mult = function(other) {
-        this.r *= other.r;
-        this.g *= other.g;
-        this.b *= other.b;
-
-        return this;
-    }
-
-    this.mult_scalar = function(other) {
-        this.r *= other;
-        this.g *= other;
-        this.b *= other;
-
-        return this;
+    fn magnitude(&self) -> f64 {
+        Math.sqrt(Math.pow(self.x, 2) + Math.pow(self.y, 2) + Math.pow(self.z, 2))
     }
 }
 
-function Ray(origin, direction) {
-    this.origin = origin;
-    this.direction = direction;
+#[derive(Debug, Clone, Copy, new)]
+struct Colour {
+    r: f64, b: f64, g: f64
 }
 
-function Material(diffuse, specular, ambient, reflected, shininess) {
-    this.diffuse = diffuse;
-    this.specular = specular;
-    this.ambient = ambient;
-    this.reflected = reflected;
-    this.shininess = shininess;
+impl Colour {
+    fn red() -> Colour {
+        Colour::new(0.5, 0, 0)
+    }
+
+    fn blue() -> Colour {
+        Colour::new(0, 0, 1)
+    }
+
+    fn white() -> Colour {
+        Colour::new(1, 1, 1)
+    }
+
+    fn grey() -> Colour {
+        Colour::new(0.75, 0.75, 0.75)
+    }
+
+    fn dark_grey() -> Colour {
+        Colour::new(0.25, 0.25, 0.25)
+    }
+
+    fn black() -> Colour {
+        Colour::new(0, 0, 0)
+    }
+
+    fn add(&mut self, other) -> &Colour {
+        self.r += other.r;
+        self.g += other.g;
+        self.b += other.b;
+
+        self
+    }
+
+    fn mult(&mut self, other) -> &Colour {
+        self.r *= other.r;
+        self.g *= other.g;
+        self.b *= other.b;
+
+        self
+    }
+
+    fn mult_scalar(&mut self, other) -> &Colour {
+        self.r *= other;
+        self.g *= other;
+        self.b *= other;
+
+        self
+    }
 }
 
-function red_plastic() {
-    return new Material(red(), grey(), red(), dark_grey(), 8);
+#[derive(Debug, Clone, new)]
+struct Ray {
+    origin: Point,
+    direction: Point,
 }
 
-function blue_plastic() {
-    return new Material(blue(), grey(), blue(), dark_grey(), 8);
+#[derive(Debug, Clone, new)]
+struct Material {
+    diffuse: Colour,
+    specular: Colour,
+    ambient: Colour,
+    reflected: Colour,
+    shininess: f64,
 }
 
-function mirror() {
-    return new Material(dark_grey(), grey(), dark_grey(), grey(), 2);
+impl Material {
+    fn red_plastic() -> Material {
+        Material::new(Colour::red(), Colour::grey(), Colour::red(), Colour::dark_grey(), 8)
+    }
+
+    fn blue_plastic() -> Material {
+        Material::new(Colour::blue(), Colour::grey(), Colour::blue(), Colour::dark_grey(), 8)
+    }
+
+    fn mirror() -> Material {
+        Material::new(Colour::dark_grey(), Colour::grey(), Colour::dark_grey(), Colour::grey(), 2)
+    }
 }
 
-function red() {
-    return new Colour(0.5, 0, 0);
+#[derive(Debug, Clone, new)]
+struct Intersection<'scene> {
+    object: &'scene Object,
+    normal: Point,
+    point: Point,
+    t: f64,
 }
 
-function blue() {
-    return new Colour(0, 0, 1);
+impl<'scene> PartialOrd for Intersection<'scene> {
+    fn foo(&self, other: &Intersection<'scene>) {
+        self.t - other.t
+    }
 }
 
-function white() {
-    return new Colour(1, 1, 1);
+// TODO should be trait
+#[derive(Debug, Clone)]
+enum Object {
+    Sphere(Sphere),
+    Polygon(Polygon),
 }
 
-function grey() {
-    return new Colour(0.75, 0.75, 0.75);
+#[derive(Debug, Clone, new)]
+struct Sphere {
+    center: Point,
+    radius: f64,
+    material: Material,
 }
 
-function dark_grey() {
-    return new Colour(0.25, 0.25, 0.25);
+#[derive(Debug, Clone)]
+struct Polygon {
+    p1: Point,
+    p2: Point,
+    p3: Point,
+    material: Material,
+    normal: Option<Point>,
+    u: Point,
+    v: Point,
+    uv: f64,
+    uu: f64,
+    vv: f64,
+    triangle_denom f64,
 }
 
-function black() {
-    return new Colour(0, 0, 0);
+impl Object {
+    fn intersects(&mut self, ray: &Ray) -> Option<Intersection> {
+        match *self {
+            Object::Sphere(ref s) => s.intersects(ray),
+            Object::Polygon(ref mut p) => p.intersects(ray),
+        }
+    }
+
+    fn translate(&mut self, p: Point) {
+        match *self {
+            Object::Sphere(ref mut s) => s.translate(p),
+            Object::Polygon(ref mut p) => p.translate(p),
+        }
+    }
+
+    fn transform(&mut self, m: &Matrix) {
+        match *self {
+            Object::Sphere(ref mut s) => s.transform(m),
+            Object::Polygon(ref mut p) => p.transform(m),
+        }
+    }
 }
 
-function Sphere(center, r, material) {
-    this.center = center;
-    this.radius = r;
-    this.material = material;
-
-    this.intersects = function(ray) {
+impl Sphere {
+    fn intersects(&self, ray: &Ray) -> Option<Intersection> {
         let rel_center = subtract_points(ray.origin, this.center);
 
         let l_dot_rel_center = dot(ray.direction, rel_center);
         let rel_center_sq = dot(rel_center, rel_center);
         let under_sqrt = Math.pow(l_dot_rel_center, 2) - rel_center_sq + Math.pow(this.radius, 2);
 
-        if (under_sqrt >= 0) {
+        if under_sqrt >= 0 {
             let sqrt = Math.sqrt(under_sqrt);
             let t = -sqrt - l_dot_rel_center;
-            if (t <= 0.001) {
+            if t <= 0.001 {
                 // Intersection is behind the origin of the ray.
-                return null;
+                return None;
             }
             let point = mult_point_scalar(ray.direction, t).add(ray.origin);
             let normal = subtract_points(point, this.center).normalise();
-            return {
-                object: this,
-                normal: normal,
-                point: point,
-                t: t
-            };
+            Some(Intersection::new(this, normal, point, t))
         } else {
-            return null;
+            None
         }
     }
 
-    this.translate = function(v) {
-        this.center.translate(v);
+    fn translate(&mut self, v: Point) {
+        self.center.translate(v);
     }
 
     // Note that this won't apply scales properly.
-    this.transform = function(m) {
-        this.center.post_mult(m);
+    fn transform(&mut self, m: &Matrix) {
+        self.center.post_mult(m);
     }
 }
 
-function Polygon(p1, p2, p3, material) {
-    this.p1 = p1;
-    this.p2 = p2;
-    this.p3 = p3;
-    this.material = material;
-
-    this.compute_normal = function() {
-        this.u = subtract_points(p2, p1);
-        this.v = subtract_points(p3, p1);
-        this.normal = cross(this.u, this.v).normalise();
-        this.uv = dot(this.u, this.v);
-        this.uu = dot(this.u, this.u);
-        this.vv = dot(this.v, this.v);
-        this.triangle_denom = this.uv * this.uv - this.uu * this.vv;
+impl Polygon {
+    fn new(p1: Point, p2: Point, p3: Point, material: Material) -> Polygon {
+        Polygon {
+            p1: p1,
+            p2: p2,
+            p3: p3,
+            material: material,
+            normal: None,
+            u: Point::new(0, 0, 0),
+            v: Point::new(0, 0, 0),
+            uv: 0,
+            uu: 0,
+            vv: 0,
+            triangle_denom 0,
+        }
     }
 
-    this.intersects = function(ray) {
-        if (!this.normal) {
-            this.compute_normal();
+    fn intersects(&mut self, ray: &Ray) -> Option<Intersection> {
+        if self.normal.is_none() {
+            self.compute_normal();
         }
+
+        let normal = self.normal.unwrap();
 
         // First test if the ray intersects the plane of the polygon.
-        let plane_denom = dot(this.normal, ray.direction);
-        if (plane_denom <= 0.001 && plane_denom >= -0.001) {
+        let plane_denom = dot(normal, ray.direction);
+        if plane_denom <= 0.001 && plane_denom >= -0.001 {
             // Ray is parallel to plane.
-            return null;
+            return None;
         }
 
-        let t = dot(this.normal, subtract_points(this.p1, ray.origin)) / plane_denom;
-        if (t <= 0.001) {
+        let t = dot(normal, subtract_points(self.p1, ray.origin)) / plane_denom;
+        if t <= 0.001 {
             // Plane is behind ray's origin.
-            return null;
+            return None;
         }
         let point = mult_point_scalar(ray.direction, t).add(ray.origin);
 
         // Test if the intersection point is within the triangle.
-        let w = subtract_points(point, this.p1);
-        let wu = dot(w, this.u);
-        let wv = dot(w, this.v);
+        let w = subtract_points(point, self.p1);
+        let wu = dot(w, self.u);
+        let wv = dot(w, self.v);
 
-        let r = (this.uv * wv - this.vv * wu) / this.triangle_denom;
-        let s = (this.uv * wu - this.uu * wv) / this.triangle_denom;
+        let r = (self.uv * wv - self.vv * wu) / self.triangle_denom;
+        let s = (self.uv * wu - self.uu * wv) / self.triangle_denom;
 
-        if (r <= 0.001 || s <= 0.001 || r + s >= 1) {
-            return null;
+        if r <= 0.001 || s <= 0.001 || r + s >= 1 {
+            return None;
         }
 
-        return {
-            object: this,
-            point: point,
-            normal: this.normal,
-            t: t
-        };
+        Some(Intersection::new(self, point, normal, t))
     }
 
-    this.translate = function(v) {
-        this.p1.translate(v);
-        this.p2.translate(v);
-        this.p3.translate(v);
+    fn compute_normal(&mut self) {
+        self.u = subtract_points(p2, p1);
+        self.v = subtract_points(p3, p1);
+        self.normal = cross(self.u, self.v).normalise();
+        self.uv = dot(self.u, self.v);
+        self.uu = dot(self.u, self.u);
+        self.vv = dot(self.v, self.v);
+        self.triangle_denom = self.uv * self.uv - self.uu * self.vv;
     }
 
-    this.transform = function(m) {
-        this.p1.post_mult(m);
-        this.p2.post_mult(m);
-        this.p3.post_mult(m);
+    fn translate(&mut self, v: Point) {
+        self.p1.translate(v);
+        self.p2.translate(v);
+        self.p3.translate(v);
+        self.normal = None;
+    }
+
+    fn transform(&mut self, m: &Matrix) {
+        self.p1.post_mult(m);
+        self.p2.post_mult(m);
+        self.p3.post_mult(m);        
+        self.normal = None;
     }
 }
 
-function PointLight(from, colour, attenuation) {
-    this.from = from;
-    this.colour = colour;
-    this.attenuation = attenuation;
 
-    // If view_vec is null, illuminate will not take account of specular illumination.
-    this.illuminate = function(point, normal, material, view_vec) {
-        let result = black();
+// TODO trait
+#[derive(Debug, Clone)]
+enum Light {
+    Point(PointLight),
+    Sphere(SphereLight),
+}
 
-        let light_vec = subtract_points(this.from, point);
+impl Light {
+    // If view_vec is None, illuminate will not take account of specular illumination.
+    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, view_vec: Option<Point>) -> Colour {
+        match *self {
+            Light::Point(ref pl) => pl.illuminate(point, scene, normal, material, view_vec),
+            Light::Sphere(ref sl) => sl.illuminate(point, scene, normal, material, view_vec),
+        }
+    }
+}
+
+#[derive(Debug, Clone, new)]
+struct PointLight {
+    from: Point,
+    colour: Colour,
+    attenuation: Option<Attenuation>,
+}
+
+impl PointLight {
+    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, view_vec: Option<Point>) -> Colour {
+        let result = Colour::black();
+
+        let light_vec = subtract_points(self.from, point);
 
         let distance = light_vec.magnitude();
-        let attenuation_factor = this.attenuation_factor(distance);
-        if (attenuation_factor == 0) {
+        let attenuation_factor = self.attenuation_factor(distance);
+        if attenuation_factor == 0 {
             return result;
         }
 
         // Normalise
         light_vec.mult_scalar(1 / distance);
         let light_ray = new Ray(point, light_vec);
-        if (intersects(light_ray)) {
+        if intersects(scene, light_ray) {
             // In shadow.
             return result;
         }
 
         let diffuse_dot = dot(light_vec, normal);
-        if (diffuse_dot <= 0) {
+        if diffuse_dot <= 0 {
             // Facing away from light.
             return result;
         }
-        let attenuated_colour = mult_colour_scalar(this.colour, attenuation_factor);
+        let attenuated_colour = mult_colour_scalar(self.colour, attenuation_factor);
         let diffuse = mult_colour_scalar(material.diffuse, diffuse_dot).mult(attenuated_colour);
         result.add(diffuse);
 
-        if (view_vec) {
+        if let Some(view_vec) = view_vec {
             let light_reflect_vec = subtract_points(normal, light_vec).mult_scalar(dot(light_vec, normal) * 2);
             let specular_dot = Math.min(1, Math.max(0, dot(mult_point_scalar(view_vec, -1), light_reflect_vec)));
             let specular = mult_colour_scalar(material.specular, Math.pow(specular_dot, material.shininess)).mult(attenuated_colour);
             result.add(specular);
         }
 
-        return result;
+        result
     }
 
-    this.attenuation_factor = function(d) {
-        if (!this.attenuation) {
-            return 1;
-        }
+    fn attenuation_factor(&self, d: f64) -> f64 {
+        match self.attenuation {
+            Some(attenuation) => {
+                if d >= attenuation.distance {
+                    return 0;
+                }
 
-        if (d >= this.attenuation.distance) {
-            return 0;
+                let k = attenuation.distance * attenuation.moderation;
+                let dk = d / k;
+                let dm = d / attenuation.distance;
+                1 / Math.pow(dk / (1 - Math.pow(dm, 2)) + 1, 2)
+            }
+            None => 1,
         }
-
-        let k = this.attenuation.distance * this.attenuation.moderation;
-        let dk = d / k;
-        let dm = d / this.attenuation.distance;
-        return 1 / Math.pow(dk / (1 - Math.pow(dm, 2)) + 1, 2);
     }
 }
 
-function SphereLight(from, radius, colour) {
-    this.from = from;
-    this.radius = radius;
-    this.colour = colour;
-    this.samples = 16;
+#[derive(Debug, Clone, Copy, new)]
+struct Attenuation {
+    distance: f64,
+    moderation: f64,
+}
 
-    // If view_vec is null, illuminate will not take account of specular illumination.
-    this.illuminate = function(point, normal, material, view_vec) {
-        let result = black();
+#[derive(Debug, Clone)]
+struct SphereLight{
+    from: Point,
+    radius: f64,
+    colour: Colour,
+    samples: u8,
+}
 
-        for (let i = 0; i < this.samples; ++i) {
-            let light_point = this.random_point();
+impl SphereLight {
+    fn new(from: Point, radius: f64, colour: Colour) -> SphereLight {
+        SphereLight {
+            from: from,
+            radius: radius,
+            colour: colour,
+            samples: 16,
+        }
+    }
+
+    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, _view_vec: Option<Point>) -> Colour {
+        let result = Colour::black();
+
+        for i in 0..self.samples {
+            let light_point = self.random_point();
             let light_vec = subtract_points(light_point, point).normalise();
-            let light_ray = new Ray(point, light_vec);
-            if (intersects(light_ray)) {
+            let light_ray = Ray::new(point, light_vec);
+            if intersects(scene, light_ray).is_some() {
                 // In shadow.
                 continue;
             }
 
             let diffuse_dot = dot(light_vec, normal);
-            if (diffuse_dot <= 0) {
+            if diffuse_dot <= 0 {
                 // Facing away from light.
                 continue;
             }
-            let diffuse = mult_colour_scalar(material.diffuse, diffuse_dot / this.samples).mult(this.colour);
+            let diffuse = mult_colour_scalar(material.diffuse, diffuse_dot / self.samples).mult(self.colour);
             result.add(diffuse);
 
             // Could compute a specular component, but seems expensive and maybe inappropriate.
         }
 
-        return result;
+        result
     }
 
     // Return a random point on the surface of the sphere.
-    this.random_point = function() {
-        while (true) {
+    fn random_point(&self) -> Point {
+        loop {
             // Compute a random point in an axis-aligned cube at the origin, covering -1 to 1.
             let dx = Math.random() * 2 - 1;
             let dy = Math.random() * 2 - 1;
@@ -624,12 +727,13 @@ function SphereLight(from, radius, colour) {
                 dz /= sqrt_sum;
 
                 // Scale and translate to the desired sphere.
-                return new Point(this.from.x + dx * this.radius,
-                                 this.from.y + dy * this.radius,
-                                 this.from.z + dz * this.radius);
+                return Point::new(self.from.x + dx * self.radius,
+                                  self.from.y + dy * self.radius,
+                                  self.from.z + dz * self.radius);
             }
         }
     }
+
 }
 
 struct Scene {
