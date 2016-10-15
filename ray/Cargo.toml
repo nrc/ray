@@ -5,3 +5,5 @@ authors = ["Nick Cameron <ncameron@mozilla.com>"]
 
 [dependencies]
 image = "*"
+rand = "*"
+derive-new = "0.1"

@@ -1,39 +1,56 @@
+#![feature(proc_macro)]
+
 extern crate image;
+extern crate rand;
+#[macro_use]
+extern crate derive_new;
 
 use image::ColorType;
 use image::png::PNGEncoder;
 
+use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::env;
 use std::fs::File;
 
 const RAY_DEPTH: u8 = 4;
 const SUPER_SAMPLES: u8 = 2;
 
+// TODO only ambient light?
+
+// Because std::cmp::min/max needs Ord, not PartialOrd.
+fn min(v1: f64, v2: f64) -> f64 {
+    if v1 >= v2 { v2 } else { v1 }
+}
+
+fn max(v1: f64, v2: f64) -> f64 {
+    if v2 >= v1 { v2 } else { v1 }
+}
 
 fn init() -> Scene {
-    let mut objects = vec![];
+    let mut objects: Vec<Box<Object>> = vec![];
     let mut lights = vec![];
 
     // objects.push(new Sphere(new Point(20, 20, 0), 20, red_plastic()));
-    objects.push(Object::Sphere(Sphere::new(Point::new(-100, 0, 0), 40, Material::blue_plastic())));
-    objects.push(Object::Sphere(Sphere::new(Point::new(30, 0, 0), 20, Material::blue_plastic())));
+    objects.push(Box::new(Sphere::new(Point::new(-100.0, 0.0, 0.0), 40.0, Material::blue_plastic())));
+    objects.push(Box::new(Sphere::new(Point::new(30.0, 0.0, 0.0), 20.0, Material::blue_plastic())));
     // objects.push(new Polygon(new Point(150, -50, 250), new Point(150, -50, -150), new Point(-150, -50, -150), mirror()));
 
     // attenuation: { distance: 500, moderation: 0.5 }
-    lights.push(Light::Point(PointLight::new(Point::new(0, 0, 0), Colour::new(0.7, 0.7, 0.7), None)));
+    lights.push(Light::Point(PointLight::new(Point::new(0.0, 0.0, 0.0), Colour::new(0.7, 0.7, 0.7), None)));
     // lights.push(new SphereLight(new Point(100, 150, 0), 20, new Colour(0.7, 0.7, 0.7)));
     // lights.push(new PointLight(new Point(-150, 0, -150), new Colour(0.5, 0.5, 0.5), null));
 
     Scene {
         objects: objects,
-        lights: lights
-        ambient_light: Colour(0.2, 0.2, 0.2),
+        lights: lights,
+        ambient_light: Colour::new(0.2, 0.2, 0.2),
         eye: Eye {
-            from: Point::new(0, 0, -300),
-            at: Point::new(0, 0, 0),
-            length: 50,
-            width: 50,
-            height: 50,
+            from: Point::new(0.0, 0.0, -300.0),
+            at: Point::new(0.0, 0.0, 0.0),
+            length: 50.0,
+            width: 50.0,
+            height: 50.0,
         },
         background: Colour::black(),
     }
@@ -41,24 +58,24 @@ fn init() -> Scene {
 
 struct Rendered {
     data: Vec<u8>,
-    width: usize,
-    height: usize,
+    width: u32,
+    height: u32,
 }
 
 impl Rendered {
-    fn new(width: usize, height: usize) -> Rendered {
+    fn new(width: u32, height: u32) -> Rendered {
         Rendered {
-            data = vec![u8; width + height * 4],
+            data: vec![0; (width * height * 4) as usize],
             width: width,
             height: height,
         }
     }
 
-    fn set_pixel(&mut self, x: usize, y: usize, colour: &Colour) {
-        let offset = 4 * (x + y * self.width);
-        self.data[offset] = Math.min(colour.r * 255, 255);
-        self.data[offset + 1] = Math.min(colour.g * 255, 255);
-        self.data[offset + 2] = Math.min(colour.b * 255, 255);
+    fn set_pixel(&mut self, x: u32, y: u32, colour: Colour) {
+        let offset = 4 * (x + y * self.width) as usize;
+        self.data[offset] = min(colour.r * 255.0, 255.0) as u8;
+        self.data[offset + 1] = min(colour.g * 255.0, 255.0) as u8;
+        self.data[offset + 2] = min(colour.b * 255.0, 255.0) as u8;
         self.data[offset + 3] = 255;
     }
 }
@@ -68,7 +85,7 @@ fn render(mut scene: Scene) -> Rendered {
 
     world_transform(&mut scene);
 
-    scene.render(&scene, &mut result);
+    scene.render(&mut result);
 
     // println!("transform: " + (t2 - t1) + "ms");
     // println!("rendering: " + (t3 - t2) + "ms");
@@ -85,7 +102,7 @@ fn world_transform(scene: &mut Scene) {
         o.translate(from);
     }
     for l in &mut scene.lights {
-        l.from.translate(from);
+        l.from().translate(from);
     }
     scene.eye.at.translate(from);
     // Should be (0, 0, 0);
@@ -99,8 +116,8 @@ fn world_transform(scene: &mut Scene) {
 
     // Rotate the world so that eye.at is on the z-axis (i.e., eye.at.x == eye.at.y == 0).
     // Compute the rotation matrix.
-    let sqrt_ax_sq_plus_az_sq = Math.sqrt(scene.eye.at.x * scene.eye.at.x + scene.eye.at.z * scene.eye.at.z);
-    let sqrt_ax_sq_plus_ay_sq_plus_az_sq = Math.sqrt(scene.eye.at.x * scene.eye.at.x + scene.eye.at.y * scene.eye.at.y + scene.eye.at.z * scene.eye.at.z);
+    let sqrt_ax_sq_plus_az_sq = (scene.eye.at.x * scene.eye.at.x + scene.eye.at.z * scene.eye.at.z).sqrt();
+    let sqrt_ax_sq_plus_ay_sq_plus_az_sq = (scene.eye.at.x * scene.eye.at.x + scene.eye.at.y * scene.eye.at.y + scene.eye.at.z * scene.eye.at.z).sqrt();
 
     let sin_tilt = scene.eye.at.y / sqrt_ax_sq_plus_ay_sq_plus_az_sq;
     let cos_tilt = sqrt_ax_sq_plus_az_sq / sqrt_ax_sq_plus_ay_sq_plus_az_sq;
@@ -109,13 +126,13 @@ fn world_transform(scene: &mut Scene) {
 
     let rot_at_matrix = [[cos_tilt * cos_pan, -sin_tilt, cos_tilt * sin_pan],
                          [sin_tilt * cos_pan, cos_tilt, sin_tilt * sin_pan],
-                         [-sin_pan, 0, cos_pan]];
+                         [-sin_pan, 0.0, cos_pan]];
 
     for o in &mut scene.objects {
         o.transform(&rot_at_matrix);
     }
     for l in &mut scene.lights {
-        l.from.post_mult(&rot_at_matrix);
+        l.from().post_mult(&rot_at_matrix);
     }
     scene.eye.at.post_mult(&rot_at_matrix);
 
@@ -133,18 +150,18 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
         return Colour::black();
     }
 
-    match intersects(scene, ray) {
+    match intersects(scene, &ray) {
         Some(intersection) => {
-            let material = intersection.object.material;
-            let mut result = black();
+            let material = intersection.object.material().clone();
+            let mut result = Colour::black();
 
-            let ambient = mult_colours(material.ambient, ambient_light.colour);
-            result.add(ambient);
+            let ambient = mult_colours(material.ambient, scene.ambient_light);
+            result = result.add(ambient);
 
-            let reflect_vec = subtract_points(ray.direction, mult_point_scalar(intersection.normal, dot(ray.direction, intersection.normal) * 2));
-            let reflect_ray = new Ray(intersection.point, reflect_vec);
+            let reflect_vec = subtract_points(ray.direction, mult_point_scalar(intersection.normal, dot(ray.direction, intersection.normal) * 2.0));
+            let reflect_ray = Ray::new(intersection.point, reflect_vec);
             let reflected = trace(reflect_ray, depth + 1, scene);
-            result.add(mult_colours(material.reflected, reflected));
+            result = result.add(mult_colours(material.reflected, reflected));
 
             for light in &scene.lights {
                 // Only compute specular illumination for primary rays.
@@ -153,7 +170,7 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
                 } else {
                     None
                 };
-                result.add(light.illuminate(intersection.point, intersection.normal, material, view_vec));
+                result = result.add(light.illuminate(scene, intersection.point, intersection.normal, material.clone(), view_vec));
             }
 
             result
@@ -162,38 +179,38 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
     }
 }
 
-fn intersects(scene: &Scene, ray: Ray) -> Option<Intersection> {
-    let mut results = scene.objects.iter().filter_map(|o| o.intersects(ray)).collect();
+fn intersects<'a>(scene: &'a Scene, ray: &Ray) -> Option<Intersection<'a>> {
+    let mut results: Vec<Intersection<'a>> = scene.objects.iter().filter_map(|o| o.intersects(ray)).collect();
 
     results.sort();
 
-    results.get(0)
+    results.into_iter().next()
 }
 
 impl Scene {
     fn render(&self, dest: &mut Rendered) {
         // We must translate and scale the pixel on to the image plane.
-        let trans_x = dest.width / 2;
-        let trans_y = dest.height / 2;
-        let scale_x = self.eye.width / dest.width;
-        let scale_y = -self.eye.height / dest.height;
+        let trans_x = dest.width as f64 / 2.0;
+        let trans_y = dest.height as f64 / 2.0;
+        let scale_x = self.eye.width / dest.width as f64;
+        let scale_y = -self.eye.height / dest.height as f64;
 
-        let sub_const = SUPER_SAMPLES * 2;
+        let sub_const = (SUPER_SAMPLES * 2) as f64;
         let sub_pixel_x = scale_x / sub_const;
         let sub_pixel_y = scale_y / sub_const;
 
         for y in 0..dest.height {
-            let image_y = (y - trans_y) * scale_y;
+            let image_y = (y as f64 - trans_y) * scale_y;
             for x in 0..dest.width {
-                let image_x = (x - trans_x) * scale_x;
+                let image_x = (x as f64 - trans_x) * scale_x;
 
                 // Super-sampling.
                 let mut points = vec![];
-                let yy = image_y - (scale_y / 2);
-                for sy in 0..SUPER_SAMPLES {
-                    let xx = image_x - (scale_x / 2);
-                    for sx in 0..SUPER_SAMPLES {
-                        points.push(new Point(xx, yy, self.eye.length))
+                let mut yy = image_y - (scale_y / 2.0);
+                for _ in 0..SUPER_SAMPLES {
+                    let mut xx = image_x - (scale_x / 2.0);
+                    for _ in 0..SUPER_SAMPLES {
+                        points.push(Point::new(xx, yy, self.eye.length));
                         xx += sub_pixel_x;
                     }
                     yy += sub_pixel_y;
@@ -203,9 +220,9 @@ impl Scene {
                 for p in &points {
                     // Note that due to the world transform, eye.from is the origin.
                     let ray = Ray::new(self.eye.from, p.normalise());
-                    sum.add(trace(ray, 0));
+                    sum = sum.add(trace(ray, 0, self));
                 }
-                dest.setPixel(x, y, sum.mult_scalar(1 / (SUPER_SAMPLES * SUPER_SAMPLES)));
+                dest.set_pixel(x, y, sum.mult_scalar(1.0 / (SUPER_SAMPLES * SUPER_SAMPLES) as f64));
             }
         }
     }
@@ -267,23 +284,23 @@ struct Point {
 }
 
 impl Point {
-    fn translate(&mut self, by) -> &Point {
+    fn translate(mut self, by: Point) -> Point {
         self.x -= by.x;
         self.y -= by.y;
         self.z -= by.z;
 
         self
-    };
+    }
 
-    fn add(&mut self, other) -> &Point {
+    fn add(mut self, other: Point) -> Point {
         self.x += other.x;
         self.y += other.y;
         self.z += other.z;
 
         self
-    };
+    }
 
-    fn post_mult(&mut self, matrix) -> &Point {
+    fn post_mult(mut self, matrix: &Matrix) -> Point {
         let new_x = self.x * matrix[0][0] + self.y * matrix[1][0] + self.z * matrix[2][0];
         let new_y = self.x * matrix[0][1] + self.y * matrix[1][1] + self.z * matrix[2][1];
         let new_z = self.x * matrix[0][2] + self.y * matrix[1][2] + self.z * matrix[2][2];
@@ -293,9 +310,9 @@ impl Point {
         self.z = new_z;
 
         self
-    };
+    }
 
-    fn mult_scalar(&mut self, other) -> &Point {
+    fn mult_scalar(mut self, other: f64) -> Point {
         self.x *= other;
         self.y *= other;
         self.z *= other;
@@ -303,7 +320,7 @@ impl Point {
         self
     }
 
-    fn normalise(&mut self) -> &Point {
+    fn normalise(mut self) -> Point {
         let magnitude = self.magnitude();
         self.x /= magnitude;
         self.y /= magnitude;
@@ -313,7 +330,7 @@ impl Point {
     }
 
     fn magnitude(&self) -> f64 {
-        Math.sqrt(Math.pow(self.x, 2) + Math.pow(self.y, 2) + Math.pow(self.z, 2))
+        (self.x.powf(2.0) + self.y.powf(2.0) + self.z.powf(2.0)).sqrt()
     }
 }
 
@@ -324,15 +341,15 @@ struct Colour {
 
 impl Colour {
     fn red() -> Colour {
-        Colour::new(0.5, 0, 0)
+        Colour::new(0.5, 0.0, 0.0)
     }
 
     fn blue() -> Colour {
-        Colour::new(0, 0, 1)
+        Colour::new(0.0, 0.0, 1.0)
     }
 
     fn white() -> Colour {
-        Colour::new(1, 1, 1)
+        Colour::new(1.0, 1.0, 1.0)
     }
 
     fn grey() -> Colour {
@@ -344,10 +361,10 @@ impl Colour {
     }
 
     fn black() -> Colour {
-        Colour::new(0, 0, 0)
+        Colour::new(0.0, 0.0, 0.0)
     }
 
-    fn add(&mut self, other) -> &Colour {
+    fn add(mut self, other: Colour) -> Colour {
         self.r += other.r;
         self.g += other.g;
         self.b += other.b;
@@ -355,7 +372,7 @@ impl Colour {
         self
     }
 
-    fn mult(&mut self, other) -> &Colour {
+    fn mult(mut self, other: Colour) -> Colour {
         self.r *= other.r;
         self.g *= other.g;
         self.b *= other.b;
@@ -363,7 +380,7 @@ impl Colour {
         self
     }
 
-    fn mult_scalar(&mut self, other) -> &Colour {
+    fn mult_scalar(mut self, other: f64) -> Colour {
         self.r *= other;
         self.g *= other;
         self.b *= other;
@@ -389,19 +406,19 @@ struct Material {
 
 impl Material {
     fn red_plastic() -> Material {
-        Material::new(Colour::red(), Colour::grey(), Colour::red(), Colour::dark_grey(), 8)
+        Material::new(Colour::red(), Colour::grey(), Colour::red(), Colour::dark_grey(), 8.0)
     }
 
     fn blue_plastic() -> Material {
-        Material::new(Colour::blue(), Colour::grey(), Colour::blue(), Colour::dark_grey(), 8)
+        Material::new(Colour::blue(), Colour::grey(), Colour::blue(), Colour::dark_grey(), 8.0)
     }
 
     fn mirror() -> Material {
-        Material::new(Colour::dark_grey(), Colour::grey(), Colour::dark_grey(), Colour::grey(), 2)
+        Material::new(Colour::dark_grey(), Colour::grey(), Colour::dark_grey(), Colour::grey(), 2.0)
     }
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Clone, new)]
 struct Intersection<'scene> {
     object: &'scene Object,
     normal: Point,
@@ -410,17 +427,24 @@ struct Intersection<'scene> {
 }
 
 impl<'scene> PartialOrd for Intersection<'scene> {
-    fn foo(&self, other: &Intersection<'scene>) {
-        self.t - other.t
+    fn partial_cmp(&self, other: &Intersection) -> Option<Ordering> {
+        self.t.partial_cmp(&other.t)
     }
 }
 
-// TODO should be trait
-#[derive(Debug, Clone)]
-enum Object {
-    Sphere(Sphere),
-    Polygon(Polygon),
+impl<'scene> Ord for Intersection<'scene> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap_or(Ordering::Equal)
+    }
 }
+
+impl<'scene> PartialEq for Intersection<'scene> {
+    fn eq(&self, other: &Intersection) -> bool {
+        self.t == other.t
+    }
+}
+
+impl<'scene> Eq for Intersection<'scene> {}
 
 #[derive(Debug, Clone, new)]
 struct Sphere {
@@ -429,62 +453,49 @@ struct Sphere {
     material: Material,
 }
 
-#[derive(Debug, Clone)]
 struct Polygon {
     p1: Point,
     p2: Point,
     p3: Point,
     material: Material,
-    normal: Option<Point>,
+    internals: RefCell<Option<PolygonInternals>>,
+}
+
+struct PolygonInternals {
+    normal: Point,
     u: Point,
     v: Point,
     uv: f64,
     uu: f64,
     vv: f64,
-    triangle_denom f64,
+    triangle_denom: f64,
 }
 
-impl Object {
-    fn intersects(&mut self, ray: &Ray) -> Option<Intersection> {
-        match *self {
-            Object::Sphere(ref s) => s.intersects(ray),
-            Object::Polygon(ref mut p) => p.intersects(ray),
-        }
-    }
-
-    fn translate(&mut self, p: Point) {
-        match *self {
-            Object::Sphere(ref mut s) => s.translate(p),
-            Object::Polygon(ref mut p) => p.translate(p),
-        }
-    }
-
-    fn transform(&mut self, m: &Matrix) {
-        match *self {
-            Object::Sphere(ref mut s) => s.transform(m),
-            Object::Polygon(ref mut p) => p.transform(m),
-        }
-    }
+trait Object {
+    fn intersects(&self, ray: &Ray) -> Option<Intersection>;
+    fn translate(&mut self, point: Point);
+    fn transform(&mut self, m: &Matrix);
+    fn material(&self) -> &Material;
 }
 
-impl Sphere {
+impl Object for Sphere {
     fn intersects(&self, ray: &Ray) -> Option<Intersection> {
-        let rel_center = subtract_points(ray.origin, this.center);
+        let rel_center = subtract_points(ray.origin, self.center);
 
         let l_dot_rel_center = dot(ray.direction, rel_center);
         let rel_center_sq = dot(rel_center, rel_center);
-        let under_sqrt = Math.pow(l_dot_rel_center, 2) - rel_center_sq + Math.pow(this.radius, 2);
+        let under_sqrt = l_dot_rel_center.powf(2.0) - rel_center_sq + self.radius.powf(2.0);
 
-        if under_sqrt >= 0 {
-            let sqrt = Math.sqrt(under_sqrt);
+        if under_sqrt >= 0.0 {
+            let sqrt = under_sqrt.sqrt();
             let t = -sqrt - l_dot_rel_center;
             if t <= 0.001 {
                 // Intersection is behind the origin of the ray.
                 return None;
             }
             let point = mult_point_scalar(ray.direction, t).add(ray.origin);
-            let normal = subtract_points(point, this.center).normalise();
-            Some(Intersection::new(this, normal, point, t))
+            let normal = subtract_points(point, self.center).normalise();
+            Some(Intersection::new(self, normal, point, t))
         } else {
             None
         }
@@ -498,6 +509,10 @@ impl Sphere {
     fn transform(&mut self, m: &Matrix) {
         self.center.post_mult(m);
     }
+
+    fn material(&self) -> &Material {
+        &self.material
+    }
 }
 
 impl Polygon {
@@ -507,22 +522,40 @@ impl Polygon {
             p2: p2,
             p3: p3,
             material: material,
-            normal: None,
-            u: Point::new(0, 0, 0),
-            v: Point::new(0, 0, 0),
-            uv: 0,
-            uu: 0,
-            vv: 0,
-            triangle_denom 0,
+            internals: RefCell::new(None),
         }
     }
 
-    fn intersects(&mut self, ray: &Ray) -> Option<Intersection> {
-        if self.normal.is_none() {
+    fn compute_normal(&self) {
+        let u = subtract_points(self.p2, self.p1);
+        let v = subtract_points(self.p3, self.p1);
+        let uv = dot(u, v);
+        let uu = dot(u, u);
+        let vv = dot(v, v);
+        let triangle_denom = uv * uv - uu * vv;
+
+        *self.internals.borrow_mut() = Some(PolygonInternals {
+            normal: cross(u, v).normalise(),
+            u: u,
+            v: v,
+            uv: uv,
+            uu: uu,
+            vv: vv,
+            triangle_denom: triangle_denom,            
+        });
+    }
+}
+
+impl Object for Polygon {
+    fn intersects(&self, ray: &Ray) -> Option<Intersection> {
+        if self.internals.borrow().is_none() {
             self.compute_normal();
         }
 
-        let normal = self.normal.unwrap();
+        let internals = self.internals.borrow();
+        let internals = internals.as_ref().unwrap();
+
+        let normal = internals.normal;
 
         // First test if the ray intersects the plane of the polygon.
         let plane_denom = dot(normal, ray.direction);
@@ -540,41 +573,35 @@ impl Polygon {
 
         // Test if the intersection point is within the triangle.
         let w = subtract_points(point, self.p1);
-        let wu = dot(w, self.u);
-        let wv = dot(w, self.v);
+        let wu = dot(w, internals.u);
+        let wv = dot(w, internals.v);
 
-        let r = (self.uv * wv - self.vv * wu) / self.triangle_denom;
-        let s = (self.uv * wu - self.uu * wv) / self.triangle_denom;
+        let r = (internals.uv * wv - internals.vv * wu) / internals.triangle_denom;
+        let s = (internals.uv * wu - internals.uu * wv) / internals.triangle_denom;
 
-        if r <= 0.001 || s <= 0.001 || r + s >= 1 {
+        if r <= 0.001 || s <= 0.001 || r + s >= 1.0 {
             return None;
         }
 
         Some(Intersection::new(self, point, normal, t))
     }
 
-    fn compute_normal(&mut self) {
-        self.u = subtract_points(p2, p1);
-        self.v = subtract_points(p3, p1);
-        self.normal = cross(self.u, self.v).normalise();
-        self.uv = dot(self.u, self.v);
-        self.uu = dot(self.u, self.u);
-        self.vv = dot(self.v, self.v);
-        self.triangle_denom = self.uv * self.uv - self.uu * self.vv;
-    }
-
     fn translate(&mut self, v: Point) {
         self.p1.translate(v);
         self.p2.translate(v);
         self.p3.translate(v);
-        self.normal = None;
+        *self.internals.borrow_mut() = None;
     }
 
     fn transform(&mut self, m: &Matrix) {
         self.p1.post_mult(m);
         self.p2.post_mult(m);
         self.p3.post_mult(m);        
-        self.normal = None;
+        *self.internals.borrow_mut() = None;
+    }
+
+    fn material(&self) -> &Material {
+        &self.material
     }
 }
 
@@ -590,9 +617,16 @@ impl Light {
     // If view_vec is None, illuminate will not take account of specular illumination.
     fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, view_vec: Option<Point>) -> Colour {
         match *self {
-            Light::Point(ref pl) => pl.illuminate(point, scene, normal, material, view_vec),
-            Light::Sphere(ref sl) => sl.illuminate(point, scene, normal, material, view_vec),
+            Light::Point(ref pl) => pl.illuminate(scene, point, normal, material, view_vec),
+            Light::Sphere(ref sl) => sl.illuminate(scene, point, normal, material, view_vec),
         }
+    }
+
+    fn from(&mut self) -> &mut Point {
+        match *self {
+            Light::Point(ref mut pl) => &mut pl.from,
+            Light::Sphere(ref mut sl) => &mut sl.from,
+        }        
     }
 }
 
@@ -611,20 +645,20 @@ impl PointLight {
 
         let distance = light_vec.magnitude();
         let attenuation_factor = self.attenuation_factor(distance);
-        if attenuation_factor == 0 {
+        if attenuation_factor == 0.0 {
             return result;
         }
 
         // Normalise
-        light_vec.mult_scalar(1 / distance);
-        let light_ray = new Ray(point, light_vec);
-        if intersects(scene, light_ray) {
+        light_vec.mult_scalar(1.0 / distance);
+        let light_ray = Ray::new(point, light_vec);
+        if intersects(scene, &light_ray).is_some() {
             // In shadow.
             return result;
         }
 
         let diffuse_dot = dot(light_vec, normal);
-        if diffuse_dot <= 0 {
+        if diffuse_dot <= 0.0 {
             // Facing away from light.
             return result;
         }
@@ -633,9 +667,9 @@ impl PointLight {
         result.add(diffuse);
 
         if let Some(view_vec) = view_vec {
-            let light_reflect_vec = subtract_points(normal, light_vec).mult_scalar(dot(light_vec, normal) * 2);
-            let specular_dot = Math.min(1, Math.max(0, dot(mult_point_scalar(view_vec, -1), light_reflect_vec)));
-            let specular = mult_colour_scalar(material.specular, Math.pow(specular_dot, material.shininess)).mult(attenuated_colour);
+            let light_reflect_vec = subtract_points(normal, light_vec).mult_scalar(dot(light_vec, normal) * 2.0);
+            let specular_dot = min(1.0, max(0.0, dot(mult_point_scalar(view_vec, -1.0), light_reflect_vec)));
+            let specular = mult_colour_scalar(material.specular, specular_dot.powf(material.shininess)).mult(attenuated_colour);
             result.add(specular);
         }
 
@@ -646,15 +680,15 @@ impl PointLight {
         match self.attenuation {
             Some(attenuation) => {
                 if d >= attenuation.distance {
-                    return 0;
+                    return 0.0;
                 }
 
                 let k = attenuation.distance * attenuation.moderation;
                 let dk = d / k;
                 let dm = d / attenuation.distance;
-                1 / Math.pow(dk / (1 - Math.pow(dm, 2)) + 1, 2)
+                1.0 / (dk / (1.0 - dm.powf(2.0)) + 1.0).powf(2.0)
             }
-            None => 1,
+            None => 1.0,
         }
     }
 }
@@ -686,21 +720,21 @@ impl SphereLight {
     fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, _view_vec: Option<Point>) -> Colour {
         let result = Colour::black();
 
-        for i in 0..self.samples {
+        for _ in 0..self.samples {
             let light_point = self.random_point();
             let light_vec = subtract_points(light_point, point).normalise();
             let light_ray = Ray::new(point, light_vec);
-            if intersects(scene, light_ray).is_some() {
+            if intersects(scene, &light_ray).is_some() {
                 // In shadow.
                 continue;
             }
 
             let diffuse_dot = dot(light_vec, normal);
-            if diffuse_dot <= 0 {
+            if diffuse_dot <= 0.0 {
                 // Facing away from light.
                 continue;
             }
-            let diffuse = mult_colour_scalar(material.diffuse, diffuse_dot / self.samples).mult(self.colour);
+            let diffuse = mult_colour_scalar(material.diffuse, diffuse_dot / self.samples as f64).mult(self.colour);
             result.add(diffuse);
 
             // Could compute a specular component, but seems expensive and maybe inappropriate.
@@ -713,18 +747,18 @@ impl SphereLight {
     fn random_point(&self) -> Point {
         loop {
             // Compute a random point in an axis-aligned cube at the origin, covering -1 to 1.
-            let dx = Math.random() * 2 - 1;
-            let dy = Math.random() * 2 - 1;
-            let dz = Math.random() * 2 - 1;
+            let dx = rand::random::<f64>() * 2.0 - 1.0;
+            let dy = rand::random::<f64>() * 2.0 - 1.0;
+            let dz = rand::random::<f64>() * 2.0 - 1.0;
 
             // Check if our random point is in the sphere (happens apx 50% of the time).
-            let sum = dx * dx + dy * dy + dz * dz;
-            if (sum <= 1) {
+            let sum: f64 = dx * dx + dy * dy + dz * dz;
+            if sum <= 1.0 {
                 // Project the point in the sphere on to the surface by normalising.
-                let sqrt_sum = Math.pow(sum, 0.5);
-                dx /= sqrt_sum;
-                dy /= sqrt_sum;
-                dz /= sqrt_sum;
+                let sqrt_sum = sum.sqrt();
+                let dx = dx / sqrt_sum;
+                let dy = dy / sqrt_sum;
+                let dz = dz / sqrt_sum;
 
                 // Scale and translate to the desired sphere.
                 return Point::new(self.from.x + dx * self.radius,
@@ -737,7 +771,7 @@ impl SphereLight {
 }
 
 struct Scene {
-    objects: Vec<Object>,
+    objects: Vec<Box<Object>>,
     lights: Vec<Light>,
     ambient_light: Colour,
     eye: Eye,
