@@ -11,6 +11,7 @@ use image::png::PNGEncoder;
 use std::cmp::Ordering;
 use std::env;
 use std::fs::File;
+use std::time::Instant;
 
 use colour::*;
 use lights::*;
@@ -44,7 +45,7 @@ fn init() -> Scene {
     // objects.push(new Polygon(new Point(150, -50, 250), new Point(150, -50, -150), new Point(-150, -50, -150), mirror()));
 
     // attenuation: { distance: 500, moderation: 0.5 }
-    lights.push(Light::Point(PointLight::new(Point::new(0.0, 40.0, -100.0), Colour::new(0.7, 0.7, 0.7), None)));
+    lights.push(Light::Point(PointLight::new(Point::new(0.0, 60.0, -10.0), Colour::new(0.7, 0.7, 0.7), None)));
     // lights.push(new SphereLight(new Point(100, 150, 0), 20, new Colour(0.7, 0.7, 0.7)));
     // lights.push(new PointLight(new Point(-150, 0, -150), new Colour(0.5, 0.5, 0.5), null));
 
@@ -292,11 +293,18 @@ struct Eye {
 
 fn run(file_name: &str) {
     let scene = init();
+
+    let t = Instant::now();
+
     let data = render(scene);
+
+    let t = t.elapsed();
 
     let file = File::create(file_name).unwrap();
     let encoder = PNGEncoder::new(file);
     encoder.encode(&data.data, data.width, data.height, ColorType::RGBA(8)).unwrap();
+
+    println!("Time: {}s", t.as_secs() as f64 + t.subsec_nanos() as f64 / 1_000_000_000.0);
 }
 
 fn main() {
