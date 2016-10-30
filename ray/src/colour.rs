@@ -1,10 +1,10 @@
-use std::ops::{Add, Mul};
+use std::ops::{Add, Mul, AddAssign, MulAssign};
 
 #[derive(Debug, Clone, Copy, new)]
 pub struct Colour {
     pub r: f64,
-    pub b: f64,
     pub g: f64,
+    pub b: f64,
 }
 
 impl Colour {
@@ -31,30 +31,6 @@ impl Colour {
     pub fn black() -> Colour {
         Colour::new(0.0, 0.0, 0.0)
     }
-
-    pub fn add(mut self, other: Colour) -> Colour {
-        self.r += other.r;
-        self.g += other.g;
-        self.b += other.b;
-
-        self
-    }
-
-    pub fn mult(mut self, other: Colour) -> Colour {
-        self.r *= other.r;
-        self.g *= other.g;
-        self.b *= other.b;
-
-        self
-    }
-
-    pub fn mult_scalar(mut self, other: f64) -> Colour {
-        self.r *= other;
-        self.g *= other;
-        self.b *= other;
-
-        self
-    }
 }
 
 impl Add for Colour {
@@ -64,6 +40,14 @@ impl Add for Colour {
         Colour::new(self.r + rhs.r,
                     self.g + rhs.g,
                     self.b + rhs.b)
+    }
+}
+
+impl AddAssign for Colour {
+    fn add_assign(&mut self, rhs: Colour) {
+        self.r += rhs.r;
+        self.g += rhs.g;
+        self.b += rhs.b;        
     }
 }
 
@@ -84,6 +68,22 @@ impl Mul<f64> for Colour {
         Colour::new(self.r * rhs,
                     self.g * rhs,
                     self.b * rhs)
+    }
+}
+
+impl MulAssign for Colour {
+    fn mul_assign(&mut self, rhs: Colour) {
+        self.r *= rhs.r;
+        self.g *= rhs.g;
+        self.b *= rhs.b;        
+    }
+}
+
+impl MulAssign<f64> for Colour {
+    fn mul_assign(&mut self, rhs: f64) {
+        self.r *= rhs;
+        self.g *= rhs;
+        self.b *= rhs;        
     }
 }
 

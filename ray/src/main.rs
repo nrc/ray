@@ -25,8 +25,6 @@ mod objects;
 const RAY_DEPTH: u8 = 4;
 const SUPER_SAMPLES: u8 = 2;
 
-// TODO only ambient light?
-
 // Because std::cmp::min/max needs Ord, not PartialOrd.
 fn min(v1: f64, v2: f64) -> f64 {
     if v1 >= v2 { v2 } else { v1 }
@@ -46,7 +44,7 @@ fn init() -> Scene {
     // objects.push(new Polygon(new Point(150, -50, 250), new Point(150, -50, -150), new Point(-150, -50, -150), mirror()));
 
     // attenuation: { distance: 500, moderation: 0.5 }
-    lights.push(Light::Point(PointLight::new(Point::new(0.0, 0.0, 0.0), Colour::new(0.7, 0.7, 0.7), None)));
+    lights.push(Light::Point(PointLight::new(Point::new(0.0, 40.0, -100.0), Colour::new(0.7, 0.7, 0.7), None)));
     // lights.push(new SphereLight(new Point(100, 150, 0), 20, new Colour(0.7, 0.7, 0.7)));
     // lights.push(new PointLight(new Point(-150, 0, -150), new Colour(0.5, 0.5, 0.5), null));
 
@@ -111,11 +109,11 @@ fn world_transform(scene: &mut Scene) {
         o.translate(from);
     }
     for l in &mut scene.lights {
-        l.from().translate(from);
+        *l.from() -= from;
     }
-    scene.eye.at.translate(from);
+    scene.eye.at -= from;
     // Should be (0, 0, 0);
-    scene.eye.from.translate(from);
+    scene.eye.from -= from;
 
     // console.log("translate");
     // console.log(object.center);
@@ -145,11 +143,10 @@ fn world_transform(scene: &mut Scene) {
     }
     scene.eye.at.post_mult(&rot_at_matrix);
 
-    // console.log("rotate");
-    // console.log(object.center);
-    // console.log(light.from);
-    // console.log(eye.from);
-    // console.log(eye.at);
+    // println!("post-translation: {:?}, {:?}, {:?}",
+    //          scene.lights[0].from(),
+    //          scene.eye.from,
+    //          scene.eye.at);
 
     // At this stage we are looking directly down the Z-axis from the origin to positive infinity.
 }
@@ -165,12 +162,12 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
             let mut result = Colour::black();
 
             let ambient = material.ambient * scene.ambient_light;
-            result = result.add(ambient);
+            result += ambient;
 
             let reflect_vec = ray.direction - intersection.normal * dot(ray.direction, intersection.normal) * 2.0;
             let reflect_ray = Ray::new(intersection.point, reflect_vec);
             let reflected = trace(reflect_ray, depth + 1, scene);
-            result = result.add(material.reflected * reflected);
+            result += material.reflected * reflected;
 
             for light in &scene.lights {
                 // Only compute specular illumination for primary rays.
@@ -179,7 +176,7 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
                 } else {
                     None
                 };
-                result = result.add(light.illuminate(scene, intersection.point, intersection.normal, material.clone(), view_vec));
+                result += light.illuminate(scene, intersection.point, intersection.normal, material.clone(), view_vec);
             }
 
             result
@@ -229,9 +226,9 @@ impl Scene {
                 for p in &points {
                     // Note that due to the world transform, eye.from is the origin.
                     let ray = Ray::new(self.eye.from, p.normalise());
-                    sum = sum.add(trace(ray, 0, self));
+                    sum += trace(ray, 0, self);
                 }
-                dest.set_pixel(x, y, sum.mult_scalar(1.0 / (SUPER_SAMPLES * SUPER_SAMPLES) as f64));
+                dest.set_pixel(x, y, sum * (1.0 / (SUPER_SAMPLES * SUPER_SAMPLES) as f64));
             }
         }
     }

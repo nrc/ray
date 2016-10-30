@@ -1,4 +1,4 @@
-use std::ops::{Mul, Sub};
+use std::ops::{Mul, Add, Sub, AddAssign, MulAssign, SubAssign};
 
 pub type Matrix = [[f64; 3]; 3];
 
@@ -10,22 +10,7 @@ pub struct Point {
 }
 
 impl Point {
-    pub fn translate(mut self, by: Point) -> Point {
-        self.x -= by.x;
-        self.y -= by.y;
-        self.z -= by.z;
-
-        self
-    }
-
-    pub fn add(mut self, other: Point) -> Point {
-        self.x += other.x;
-        self.y += other.y;
-        self.z += other.z;
-
-        self
-    }
-
+    #[must_use]
     pub fn post_mult(mut self, matrix: &Matrix) -> Point {
         let new_x = self.x * matrix[0][0] + self.y * matrix[1][0] + self.z * matrix[2][0];
         let new_y = self.x * matrix[0][1] + self.y * matrix[1][1] + self.z * matrix[2][1];
@@ -38,14 +23,7 @@ impl Point {
         self
     }
 
-    pub fn mult_scalar(mut self, other: f64) -> Point {
-        self.x *= other;
-        self.y *= other;
-        self.z *= other;
-
-        self
-    }
-
+    #[must_use]
     pub fn normalise(mut self) -> Point {
         let magnitude = self.magnitude();
         self.x /= magnitude;
@@ -60,6 +38,16 @@ impl Point {
     }
 }
 
+impl Add for Point {
+    type Output = Point;
+
+    fn add(self, rhs: Point) -> Point {
+        Point::new(self.x + rhs.x,
+                   self.y + rhs.y,
+                   self.z + rhs.z)
+    }
+}
+
 impl Sub for Point {
     type Output = Point;
 
@@ -70,6 +58,22 @@ impl Sub for Point {
     }
 }
 
+impl AddAssign for Point {
+    fn add_assign(&mut self, rhs: Point) {
+        self.x += rhs.x;
+        self.y += rhs.y;
+        self.z += rhs.z;        
+    }
+}
+
+impl SubAssign for Point {
+    fn sub_assign(&mut self, rhs: Point) {
+        self.x -= rhs.x;
+        self.y -= rhs.y;
+        self.z -= rhs.z;        
+    }
+}
+
 impl Mul<f64> for Point {
     type Output = Point;
 
@@ -77,6 +81,14 @@ impl Mul<f64> for Point {
         Point::new(self.x * rhs,
                    self.y * rhs,
                    self.z * rhs)
+    }
+}
+
+impl MulAssign<f64> for Point {
+    fn mul_assign(&mut self, rhs: f64) {
+        self.x *= rhs;
+        self.y *= rhs;
+        self.z *= rhs;        
     }
 }
 

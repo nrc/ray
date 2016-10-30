@@ -47,11 +47,11 @@ impl Object for Sphere {
         if under_sqrt >= 0.0 {
             let sqrt = under_sqrt.sqrt();
             let t = -sqrt - l_dot_rel_center;
-            if t <= 0.001 {
+            if t <= -0.01 {
                 // Intersection is behind the origin of the ray.
                 return None;
             }
-            let point = (ray.direction * t).add(ray.origin);
+            let point = (ray.direction * t) + ray.origin;
             let normal = (point - self.center).normalise();
             Some(Intersection::new(self, normal, point, t))
         } else {
@@ -60,12 +60,12 @@ impl Object for Sphere {
     }
 
     fn translate(&mut self, v: Point) {
-        self.center.translate(v);
+        self.center -= v;
     }
 
     // Note that this won't apply scales properly.
     fn transform(&mut self, m: &Matrix) {
-        self.center.post_mult(m);
+        self.center = self.center.post_mult(m);
     }
 
     fn material(&self) -> &Material {
@@ -127,7 +127,7 @@ impl Object for Polygon {
             // Plane is behind ray's origin.
             return None;
         }
-        let point = (ray.direction * t).add(ray.origin);
+        let point = (ray.direction * t) + ray.origin;
 
         // Test if the intersection point is within the triangle.
         let w = point - self.p1;
@@ -145,16 +145,16 @@ impl Object for Polygon {
     }
 
     fn translate(&mut self, v: Point) {
-        self.p1.translate(v);
-        self.p2.translate(v);
-        self.p3.translate(v);
+        self.p1 -= v;
+        self.p2 -= v;
+        self.p3 -= v;
         *self.internals.borrow_mut() = None;
     }
 
     fn transform(&mut self, m: &Matrix) {
-        self.p1.post_mult(m);
-        self.p2.post_mult(m);
-        self.p3.post_mult(m);        
+        self.p1 = self.p1.post_mult(m);
+        self.p2 = self.p2.post_mult(m);
+        self.p3 = self.p3.post_mult(m);        
         *self.internals.borrow_mut() = None;
     }
 

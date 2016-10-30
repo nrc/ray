@@ -37,9 +37,9 @@ pub struct PointLight {
 
 impl PointLight {
     fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, view_vec: Option<Point>) -> Colour {
-        let result = Colour::black();
+        let mut result = Colour::black();
 
-        let light_vec = self.from - point;
+        let mut light_vec = self.from - point;
 
         let distance = light_vec.magnitude();
         let attenuation_factor = self.attenuation_factor(distance);
@@ -48,7 +48,7 @@ impl PointLight {
         }
 
         // Normalise
-        light_vec.mult_scalar(1.0 / distance);
+        light_vec *= 1.0 / distance;
         let light_ray = Ray::new(point, light_vec);
         if intersects(scene, &light_ray).is_some() {
             // In shadow.
@@ -61,14 +61,14 @@ impl PointLight {
             return result;
         }
         let attenuated_colour = self.colour * attenuation_factor;
-        let diffuse = (material.diffuse * diffuse_dot).mult(attenuated_colour);
-        result.add(diffuse);
+        let diffuse = material.diffuse * diffuse_dot * attenuated_colour;
+        result += diffuse;
 
         if let Some(view_vec) = view_vec {
-            let light_reflect_vec = (normal - light_vec).mult_scalar(dot(light_vec, normal) * 2.0);
+            let light_reflect_vec = (normal - light_vec) * dot(light_vec, normal) * 2.0;
             let specular_dot = min(1.0, max(0.0, dot(view_vec * -1.0, light_reflect_vec)));
-            let specular = (material.specular * specular_dot.powf(material.shininess)).mult(attenuated_colour);
-            result.add(specular);
+            let specular = material.specular * specular_dot.powf(material.shininess) * attenuated_colour;
+            result += specular;
         }
 
         result
@@ -110,7 +110,7 @@ impl SphereLight {
     }
 
     fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, _view_vec: Option<Point>) -> Colour {
-        let result = Colour::black();
+        let mut result = Colour::black();
 
         for _ in 0..self.samples {
             let light_point = self.random_point();
@@ -126,8 +126,8 @@ impl SphereLight {
                 // Facing away from light.
                 continue;
             }
-            let diffuse = (material.diffuse * (diffuse_dot / self.samples as f64)).mult(self.colour);
-            result.add(diffuse);
+            let diffuse = material.diffuse * (diffuse_dot / self.samples as f64) * self.colour;
+            result += diffuse;
 
             // Could compute a specular component, but seems expensive and maybe inappropriate.
         }
