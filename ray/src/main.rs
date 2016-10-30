@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::env;
 use std::fs::File;
-use std::ops::{Add, Mul};
+use std::ops::{Add, Mul, Sub};
 
 const RAY_DEPTH: u8 = 4;
 const SUPER_SAMPLES: u8 = 2;
@@ -159,7 +159,7 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
             let ambient = material.ambient * scene.ambient_light;
             result = result.add(ambient);
 
-            let reflect_vec = subtract_points(ray.direction, mult_point_scalar(intersection.normal, dot(ray.direction, intersection.normal) * 2.0));
+            let reflect_vec = ray.direction - intersection.normal * dot(ray.direction, intersection.normal) * 2.0;
             let reflect_ray = Ray::new(intersection.point, reflect_vec);
             let reflected = trace(reflect_ray, depth + 1, scene);
             result = result.add(material.reflected * reflected);
@@ -231,30 +231,6 @@ impl Scene {
 
 type Matrix = [[f64; 3]; 3];
 
-fn mult_point_scalar(point: Point, scalar: f64) -> Point {
-    Point::new(point.x * scalar,
-               point.y * scalar,
-               point.z * scalar)
-}
-
-fn subtract_points(a: Point, b: Point) -> Point {
-    Point::new(a.x - b.x,
-               a.y - b.y,
-               a.z - b.z)
-}
-
-fn dot(a: Point, b: Point) -> f64 {
-    a.x * b.x +
-    a.y * b.y +
-    a.z * b.z
-}
-
-fn cross(a: Point, b: Point) -> Point {
-    Point::new(a.y * b.z - a.z * b.y,
-               a.z * b.x - a.x * b.z,
-               a.x * b.y - a.y * b.x)
-}
-
 #[derive(Debug, Clone, Copy, new)]
 struct Point {
     x: f64, y: f64, z: f64
@@ -309,6 +285,38 @@ impl Point {
     fn magnitude(&self) -> f64 {
         (self.x.powf(2.0) + self.y.powf(2.0) + self.z.powf(2.0)).sqrt()
     }
+}
+
+impl Sub for Point {
+    type Output = Point;
+
+    fn sub(self, rhs: Point) -> Point {
+        Point::new(self.x - rhs.x,
+                   self.y - rhs.y,
+                   self.z - rhs.z)
+    }
+}
+
+impl Mul<f64> for Point {
+    type Output = Point;
+
+    fn mul(self, rhs: f64) -> Point {
+        Point::new(self.x * rhs,
+                   self.y * rhs,
+                   self.z * rhs)
+    }
+}
+
+fn dot(a: Point, b: Point) -> f64 {
+    a.x * b.x +
+    a.y * b.y +
+    a.z * b.z
+}
+
+fn cross(a: Point, b: Point) -> Point {
+    Point::new(a.y * b.z - a.z * b.y,
+               a.z * b.x - a.x * b.z,
+               a.x * b.y - a.y * b.x)
 }
 
 #[derive(Debug, Clone, Copy, new)]
@@ -488,7 +496,7 @@ trait Object {
 
 impl Object for Sphere {
     fn intersects(&self, ray: &Ray) -> Option<Intersection> {
-        let rel_center = subtract_points(ray.origin, self.center);
+        let rel_center = ray.origin - self.center;
 
         let l_dot_rel_center = dot(ray.direction, rel_center);
         let rel_center_sq = dot(rel_center, rel_center);
@@ -501,8 +509,8 @@ impl Object for Sphere {
                 // Intersection is behind the origin of the ray.
                 return None;
             }
-            let point = mult_point_scalar(ray.direction, t).add(ray.origin);
-            let normal = subtract_points(point, self.center).normalise();
+            let point = (ray.direction * t).add(ray.origin);
+            let normal = (point - self.center).normalise();
             Some(Intersection::new(self, normal, point, t))
         } else {
             None
@@ -535,8 +543,8 @@ impl Polygon {
     }
 
     fn compute_normal(&self) {
-        let u = subtract_points(self.p2, self.p1);
-        let v = subtract_points(self.p3, self.p1);
+        let u = self.p2 - self.p1;
+        let v = self.p3 - self.p1;
         let uv = dot(u, v);
         let uu = dot(u, u);
         let vv = dot(v, v);
@@ -572,15 +580,15 @@ impl Object for Polygon {
             return None;
         }
 
-        let t = dot(normal, subtract_points(self.p1, ray.origin)) / plane_denom;
+        let t = dot(normal, self.p1 - ray.origin) / plane_denom;
         if t <= 0.001 {
             // Plane is behind ray's origin.
             return None;
         }
-        let point = mult_point_scalar(ray.direction, t).add(ray.origin);
+        let point = (ray.direction * t).add(ray.origin);
 
         // Test if the intersection point is within the triangle.
-        let w = subtract_points(point, self.p1);
+        let w = point - self.p1;
         let wu = dot(w, internals.u);
         let wv = dot(w, internals.v);
 
@@ -649,7 +657,7 @@ impl PointLight {
     fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, view_vec: Option<Point>) -> Colour {
         let result = Colour::black();
 
-        let light_vec = subtract_points(self.from, point);
+        let light_vec = self.from - point;
 
         let distance = light_vec.magnitude();
         let attenuation_factor = self.attenuation_factor(distance);
@@ -675,8 +683,8 @@ impl PointLight {
         result.add(diffuse);
 
         if let Some(view_vec) = view_vec {
-            let light_reflect_vec = subtract_points(normal, light_vec).mult_scalar(dot(light_vec, normal) * 2.0);
-            let specular_dot = min(1.0, max(0.0, dot(mult_point_scalar(view_vec, -1.0), light_reflect_vec)));
+            let light_reflect_vec = (normal - light_vec).mult_scalar(dot(light_vec, normal) * 2.0);
+            let specular_dot = min(1.0, max(0.0, dot(view_vec * -1.0, light_reflect_vec)));
             let specular = (material.specular * specular_dot.powf(material.shininess)).mult(attenuated_colour);
             result.add(specular);
         }
@@ -730,7 +738,7 @@ impl SphereLight {
 
         for _ in 0..self.samples {
             let light_point = self.random_point();
-            let light_vec = subtract_points(light_point, point).normalise();
+            let light_vec = (light_point - point).normalise();
             let light_ray = Ray::new(point, light_vec);
             if intersects(scene, &light_ray).is_some() {
                 // In shadow.
