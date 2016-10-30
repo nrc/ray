@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::env;
 use std::fs::File;
+use std::ops::{Add, Mul};
 
 const RAY_DEPTH: u8 = 4;
 const SUPER_SAMPLES: u8 = 2;
@@ -155,13 +156,13 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
             let material = intersection.object.material().clone();
             let mut result = Colour::black();
 
-            let ambient = mult_colours(material.ambient, scene.ambient_light);
+            let ambient = material.ambient * scene.ambient_light;
             result = result.add(ambient);
 
             let reflect_vec = subtract_points(ray.direction, mult_point_scalar(intersection.normal, dot(ray.direction, intersection.normal) * 2.0));
             let reflect_ray = Ray::new(intersection.point, reflect_vec);
             let reflected = trace(reflect_ray, depth + 1, scene);
-            result = result.add(mult_colours(material.reflected, reflected));
+            result = result.add(material.reflected * reflected);
 
             for light in &scene.lights {
                 // Only compute specular illumination for primary rays.
@@ -236,12 +237,6 @@ fn mult_point_scalar(point: Point, scalar: f64) -> Point {
                point.z * scalar)
 }
 
-fn add_points(a: Point, b: Point) -> Point {
-    Point::new(a.x + b.x,
-               a.y + b.y,
-               a.z + b.z)
-}
-
 fn subtract_points(a: Point, b: Point) -> Point {
     Point::new(a.x - b.x,
                a.y - b.y,
@@ -258,24 +253,6 @@ fn cross(a: Point, b: Point) -> Point {
     Point::new(a.y * b.z - a.z * b.y,
                a.z * b.x - a.x * b.z,
                a.x * b.y - a.y * b.x)
-}
-
-fn mult_colours(a: Colour, b: Colour) -> Colour {
-    Colour::new(a.r * b.r,
-                a.g * b.g,
-                a.b * b.b)
-}
-
-fn mult_colour_scalar(colour: Colour, scalar: f64) -> Colour {
-    Colour::new(colour.r * scalar,
-                colour.g * scalar,
-                colour.b * scalar)
-}
-
-fn add_colours(a: Colour, b: Colour) -> Colour {
-    Colour::new(a.r + b.r,
-                a.g + b.g,
-                a.b + b.b)
 }
 
 #[derive(Debug, Clone, Copy, new)]
@@ -388,6 +365,37 @@ impl Colour {
         self
     }
 }
+
+impl Add for Colour {
+    type Output = Colour;
+
+    fn add(self, rhs: Colour) -> Colour {
+        Colour::new(self.r + rhs.r,
+                    self.g + rhs.g,
+                    self.b + rhs.b)
+    }
+}
+
+impl Mul for Colour {
+    type Output = Colour;
+
+    fn mul(self, rhs: Colour) -> Colour {
+        Colour::new(self.r * rhs.r,
+                    self.g * rhs.g,
+                    self.b * rhs.b)
+    }
+}
+
+impl Mul<f64> for Colour {
+    type Output = Colour;
+
+    fn mul(self, rhs: f64) -> Colour {
+        Colour::new(self.r * rhs,
+                    self.g * rhs,
+                    self.b * rhs)
+    }
+}
+
 
 #[derive(Debug, Clone, new)]
 struct Ray {
@@ -662,14 +670,14 @@ impl PointLight {
             // Facing away from light.
             return result;
         }
-        let attenuated_colour = mult_colour_scalar(self.colour, attenuation_factor);
-        let diffuse = mult_colour_scalar(material.diffuse, diffuse_dot).mult(attenuated_colour);
+        let attenuated_colour = self.colour * attenuation_factor;
+        let diffuse = (material.diffuse * diffuse_dot).mult(attenuated_colour);
         result.add(diffuse);
 
         if let Some(view_vec) = view_vec {
             let light_reflect_vec = subtract_points(normal, light_vec).mult_scalar(dot(light_vec, normal) * 2.0);
             let specular_dot = min(1.0, max(0.0, dot(mult_point_scalar(view_vec, -1.0), light_reflect_vec)));
-            let specular = mult_colour_scalar(material.specular, specular_dot.powf(material.shininess)).mult(attenuated_colour);
+            let specular = (material.specular * specular_dot.powf(material.shininess)).mult(attenuated_colour);
             result.add(specular);
         }
 
@@ -734,7 +742,7 @@ impl SphereLight {
                 // Facing away from light.
                 continue;
             }
-            let diffuse = mult_colour_scalar(material.diffuse, diffuse_dot / self.samples as f64).mult(self.colour);
+            let diffuse = (material.diffuse * (diffuse_dot / self.samples as f64)).mult(self.colour);
             result.add(diffuse);
 
             // Could compute a specular component, but seems expensive and maybe inappropriate.
