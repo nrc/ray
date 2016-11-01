@@ -8,10 +8,13 @@ extern crate derive_new;
 use image::ColorType;
 use image::png::PNGEncoder;
 
+use std::sync::Arc;
 use std::cmp::Ordering;
 use std::env;
 use std::fs::File;
+use std::sync::Mutex;
 use std::time::Instant;
+use std::thread;
 
 use colour::*;
 use lights::*;
@@ -25,6 +28,7 @@ mod objects;
 
 const RAY_DEPTH: u8 = 4;
 const SUPER_SAMPLES: u8 = 2;
+const THREADS: u32 = 4;
 
 // Because std::cmp::min/max needs Ord, not PartialOrd.
 fn min(v1: f64, v2: f64) -> f64 {
@@ -88,12 +92,12 @@ impl Rendered {
     }
 }
 
-fn render(mut scene: Scene) -> Rendered {
-    let mut result = Rendered::new(400, 400);
+fn render(mut scene: Scene) -> Arc<Mutex<Rendered>> {
+    let mut result = Arc::new(Mutex::new(Rendered::new(400, 400)));
 
     world_transform(&mut scene);
 
-    scene.render(&mut result);
+    scene.render(result.clone());
 
     // println!("transform: " + (t2 - t1) + "ms");
     // println!("rendering: " + (t3 - t2) + "ms");
@@ -195,42 +199,78 @@ fn intersects<'a>(scene: &'a Scene, ray: &Ray) -> Option<Intersection<'a>> {
 }
 
 impl Scene {
-    fn render(&self, dest: &mut Rendered) {
+    fn render(self, dest: Arc<Mutex<Rendered>>) {
         // We must translate and scale the pixel on to the image plane.
-        let trans_x = dest.width as f64 / 2.0;
-        let trans_y = dest.height as f64 / 2.0;
-        let scale_x = self.eye.width / dest.width as f64;
-        let scale_y = -self.eye.height / dest.height as f64;
+        let (width, height) = {
+            let dest = dest.lock().unwrap();
+            (dest.width, dest.height)
+        };
+
+        let trans_x = width as f64 / 2.0;
+        let trans_y = height as f64 / 2.0;
+        let scale_x = self.eye.width / width as f64;
+        let scale_y = -self.eye.height / height as f64;
 
         let sub_const = (SUPER_SAMPLES * 2) as f64;
         let sub_pixel_x = scale_x / sub_const;
         let sub_pixel_y = scale_y / sub_const;
 
-        for y in 0..dest.height {
-            let image_y = (y as f64 - trans_y) * scale_y;
-            for x in 0..dest.width {
-                let image_x = (x as f64 - trans_x) * scale_x;
+        let this = Arc::new(self);
 
-                // Super-sampling.
-                let mut points = vec![];
-                let mut yy = image_y - (scale_y / 2.0);
-                for _ in 0..SUPER_SAMPLES {
-                    let mut xx = image_x - (scale_x / 2.0);
-                    for _ in 0..SUPER_SAMPLES {
-                        points.push(Point::new(xx, yy, self.eye.length));
-                        xx += sub_pixel_x;
+        let running_count = Arc::new(Mutex::new(THREADS));
+
+        for t in 0..THREADS {
+            let dest = dest.clone();
+            let this = this.clone();
+            let running_count = running_count.clone();
+            let current = thread::current();
+            thread::spawn(move || {
+                let mut y = t;
+                loop {
+                    if y >= height {
+                        break;
                     }
-                    yy += sub_pixel_y;
+                    let image_y = (y as f64 - trans_y) * scale_y;
+                    for x in 0..width {
+                        let image_x = (x as f64 - trans_x) * scale_x;
+
+                        let mut sum = Colour::black();
+                        let mut yy = image_y - (scale_y / 2.0);
+                        for _ in 0..SUPER_SAMPLES {
+                            let mut xx = image_x - (scale_x / 2.0);
+                            for _ in 0..SUPER_SAMPLES {
+                                let p = Point::new(xx, yy, this.eye.length);
+                                // Note that due to the world transform, eye.from is the origin.
+                                let ray = Ray::new(this.eye.from, p.normalise());
+                                sum += trace(ray, 0, &this);
+
+                                xx += sub_pixel_x;
+                            }
+                            yy += sub_pixel_y;
+                        }
+
+                        let mut dest = dest.lock().unwrap();
+                        dest.set_pixel(x, y, sum * (1.0 / (SUPER_SAMPLES * SUPER_SAMPLES) as f64));
+                    }
+                    y += THREADS;
                 }
 
-                let mut sum = Colour::black();
-                for p in &points {
-                    // Note that due to the world transform, eye.from is the origin.
-                    let ray = Ray::new(self.eye.from, p.normalise());
-                    sum += trace(ray, 0, self);
+                {
+                    let mut running_count = running_count.lock().unwrap();
+                    *running_count -= 1;
                 }
-                dest.set_pixel(x, y, sum * (1.0 / (SUPER_SAMPLES * SUPER_SAMPLES) as f64));
+                current.unpark();
+            });
+        }
+
+        loop {
+            {
+                let running_count = running_count.lock().unwrap();
+                if *running_count == 0 {
+                    break;
+                }
             }
+            thread::park();
         }
     }
 }
@@ -297,6 +337,7 @@ fn run(file_name: &str) {
     let t = Instant::now();
 
     let data = render(scene);
+    let data = data.lock().unwrap();
 
     let t = t.elapsed();
 

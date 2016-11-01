@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::sync::Mutex;
 
 use point::*;
 use colour::*;
@@ -16,7 +16,7 @@ pub struct Polygon {
     p2: Point,
     p3: Point,
     material: Material,
-    internals: RefCell<Option<PolygonInternals>>,
+    internals: Mutex<Option<PolygonInternals>>,
 }
 
 struct PolygonInternals {
@@ -29,7 +29,7 @@ struct PolygonInternals {
     triangle_denom: f64,
 }
 
-pub trait Object {
+pub trait Object: Sync + Send {
     fn intersects(&self, ray: &Ray) -> Option<Intersection>;
     fn translate(&mut self, point: Point);
     fn transform(&mut self, m: &Matrix);
@@ -80,11 +80,16 @@ impl Polygon {
             p2: p2,
             p3: p3,
             material: material,
-            internals: RefCell::new(None),
+            internals: Mutex::new(None),
         }
     }
 
     fn compute_normal(&self) {
+        let mut internals = self.internals.lock().unwrap();
+        if internals.is_some() {
+            return;
+        }
+
         let u = self.p2 - self.p1;
         let v = self.p3 - self.p1;
         let uv = dot(u, v);
@@ -92,7 +97,7 @@ impl Polygon {
         let vv = dot(v, v);
         let triangle_denom = uv * uv - uu * vv;
 
-        *self.internals.borrow_mut() = Some(PolygonInternals {
+        *internals = Some(PolygonInternals {
             normal: cross(u, v).normalise(),
             u: u,
             v: v,
@@ -106,11 +111,9 @@ impl Polygon {
 
 impl Object for Polygon {
     fn intersects(&self, ray: &Ray) -> Option<Intersection> {
-        if self.internals.borrow().is_none() {
-            self.compute_normal();
-        }
+        self.compute_normal();
 
-        let internals = self.internals.borrow();
+        let internals = self.internals.lock().unwrap();
         let internals = internals.as_ref().unwrap();
 
         let normal = internals.normal;
@@ -148,14 +151,14 @@ impl Object for Polygon {
         self.p1 -= v;
         self.p2 -= v;
         self.p3 -= v;
-        *self.internals.borrow_mut() = None;
+        *self.internals.lock().unwrap() = None;
     }
 
     fn transform(&mut self, m: &Matrix) {
         self.p1 = self.p1.post_mult(m);
         self.p2 = self.p2.post_mult(m);
         self.p3 = self.p3.post_mult(m);        
-        *self.internals.borrow_mut() = None;
+        *self.internals.lock().unwrap() = None;
     }
 
     fn material(&self) -> &Material {
