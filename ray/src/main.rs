@@ -219,7 +219,6 @@ impl Scene {
         let sub_pixel_x = scale_x / sub_const;
         let sub_pixel_y = scale_y / sub_const;
 
-        // TODO could we clone the scene rather than making an Arc?
         let this = Arc::new(self);
 
         // TODO could be an atomic, rather than a mutex
@@ -245,9 +244,9 @@ impl Scene {
                         for _ in 0..SUPER_SAMPLES {
                             let mut xx = image_x - (scale_x / 2.0);
                             for _ in 0..SUPER_SAMPLES {
-                                let p = Point::new(xx, yy, this.eye.length);
                                 // Note that due to the world transform, eye.from is the origin.
-                                let ray = Ray::new(this.eye.from, p.normalise());
+                                let p = Point::new(xx, yy, this.eye.length).normalise();
+                                let ray = Ray::new(this.eye.from, p);
                                 sum += trace(ray, 0, &this);
 
                                 xx += sub_pixel_x;

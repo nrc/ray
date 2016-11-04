@@ -72,7 +72,8 @@ impl PointLight {
                 let k = attenuation.distance * attenuation.moderation;
                 let dk = d / k;
                 let dm = d / attenuation.distance;
-                1.0 / (dk / (1.0 - dm.powf(2.0)) + 1.0).powf(2.0)
+                let dd = dk / (1.0 - dm * dm) + 1.0;
+                1.0 / (dd * dd)
             }
             None => 1.0,
         }

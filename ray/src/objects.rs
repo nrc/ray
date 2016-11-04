@@ -42,7 +42,7 @@ impl Object for Sphere {
 
         let l_dot_rel_center = dot(ray.direction, rel_center);
         let rel_center_sq = dot(rel_center, rel_center);
-        let under_sqrt = l_dot_rel_center.powf(2.0) - rel_center_sq + self.radius.powf(2.0);
+        let under_sqrt = l_dot_rel_center * l_dot_rel_center - rel_center_sq + self.radius * self.radius;
 
         if under_sqrt >= 0.0 {
             let sqrt = under_sqrt.sqrt();

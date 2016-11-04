@@ -34,7 +34,7 @@ impl Point {
     }
 
     pub fn magnitude(&self) -> f32 {
-        (self.x.powf(2.0) + self.y.powf(2.0) + self.z.powf(2.0)).sqrt()
+        (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
     }
 }
 
