@@ -9,6 +9,7 @@ use image::ColorType;
 use image::png::PNGEncoder;
 
 use std::sync::Arc;
+use std::cell::UnsafeCell;
 use std::cmp::Ordering;
 use std::env;
 use std::fs::File;
@@ -69,31 +70,35 @@ fn init() -> Scene {
 }
 
 struct Rendered {
-    data: Vec<u8>,
+    data: UnsafeCell<Vec<u8>>,
     width: u32,
     height: u32,
 }
 
+unsafe impl Sync for Rendered {}
+
 impl Rendered {
     fn new(width: u32, height: u32) -> Rendered {
         Rendered {
-            data: vec![0; (width * height * 4) as usize],
+            data: UnsafeCell::new(vec![0; (width * height * 4) as usize]),
             width: width,
             height: height,
         }
     }
 
-    fn set_pixel(&mut self, x: u32, y: u32, colour: Colour) {
+    fn set_pixel(&self, x: u32, y: u32, colour: Colour) {
         let offset = 4 * (x + y * self.width) as usize;
-        self.data[offset] = min(colour.r * 255.0, 255.0) as u8;
-        self.data[offset + 1] = min(colour.g * 255.0, 255.0) as u8;
-        self.data[offset + 2] = min(colour.b * 255.0, 255.0) as u8;
-        self.data[offset + 3] = 255;
+        unsafe {
+            (&mut *self.data.get())[offset] = min(colour.r * 255.0, 255.0) as u8;
+            (&mut *self.data.get())[offset + 1] = min(colour.g * 255.0, 255.0) as u8;
+            (&mut *self.data.get())[offset + 2] = min(colour.b * 255.0, 255.0) as u8;
+            (&mut *self.data.get())[offset + 3] = 255;
+        }
     }
 }
 
-fn render(mut scene: Scene) -> Arc<Mutex<Rendered>> {
-    let result = Arc::new(Mutex::new(Rendered::new(400, 400)));
+fn render(mut scene: Scene) -> Arc<Rendered> {
+    let result = Arc::new(Rendered::new(400, 400));
 
     world_transform(&mut scene);
 
@@ -199,10 +204,9 @@ fn intersects<'a>(scene: &'a Scene, ray: &Ray) -> Option<Intersection<'a>> {
 }
 
 impl Scene {
-    fn render(self, dest: Arc<Mutex<Rendered>>) {
+    fn render(self, dest: Arc<Rendered>) {
         // We must translate and scale the pixel on to the image plane.
         let (width, height) = {
-            let dest = dest.lock().unwrap();
             (dest.width, dest.height)
         };
 
@@ -218,13 +222,14 @@ impl Scene {
         // TODO could we clone the scene rather than making an Arc?
         let this = Arc::new(self);
 
+        // TODO could be an atomic, rather than a mutex
         let running_count = Arc::new(Mutex::new(THREADS));
 
         for t in 0..THREADS {
-            let dest = dest.clone();
             let this = this.clone();
             let running_count = running_count.clone();
             let current = thread::current();
+            let dest = dest.clone();
             thread::spawn(move || {
                 let mut y = t;
                 loop {
@@ -250,7 +255,6 @@ impl Scene {
                             yy += sub_pixel_y;
                         }
 
-                        let mut dest = dest.lock().unwrap();
                         dest.set_pixel(x, y, sum * (1.0 / (SUPER_SAMPLES * SUPER_SAMPLES) as f64));
                     }
                     y += THREADS;
@@ -338,13 +342,14 @@ fn run(file_name: &str) {
     let t = Instant::now();
 
     let data = render(scene);
-    let data = data.lock().unwrap();
 
     let t = t.elapsed();
 
     let file = File::create(file_name).unwrap();
     let encoder = PNGEncoder::new(file);
-    encoder.encode(&data.data, data.width, data.height, ColorType::RGBA(8)).unwrap();
+    unsafe {
+        encoder.encode(&*data.data.get(), data.width, data.height, ColorType::RGBA(8)).unwrap();
+    }
 
     println!("Time: {}s", t.as_secs() as f64 + t.subsec_nanos() as f64 / 1_000_000_000.0);
 }
