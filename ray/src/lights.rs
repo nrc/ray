@@ -30,7 +30,7 @@ impl Light for PointLight {
         }
 
         // Normalise
-        light_vec *= 1.0 / distance;
+        light_vec /= distance;
         let light_ray = Ray::new(point, light_vec);
         if intersects(scene, &light_ray).is_some() {
             // In shadow.
@@ -86,6 +86,7 @@ pub struct SphereLight{
     radius: f32,
     colour: Colour,
     samples: u8,
+    // TODO pre-compute random points
 }
 
 impl Light for SphereLight {

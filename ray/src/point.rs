@@ -1,4 +1,4 @@
-use std::ops::{Mul, Add, Sub, AddAssign, MulAssign, SubAssign};
+use std::ops::{Mul, Div, Add, Sub, AddAssign, MulAssign, SubAssign, DivAssign};
 
 pub type Matrix = [[f32; 3]; 3];
 
@@ -89,6 +89,24 @@ impl MulAssign<f32> for Point {
         self.x *= rhs;
         self.y *= rhs;
         self.z *= rhs;        
+    }
+}
+
+impl Div<f32> for Point {
+    type Output = Point;
+
+    fn div(self, rhs: f32) -> Point {
+        Point::new(self.x / rhs,
+                   self.y / rhs,
+                   self.z / rhs)
+    }
+}
+
+impl DivAssign<f32> for Point {
+    fn div_assign(&mut self, rhs: f32) {
+        self.x /= rhs;
+        self.y /= rhs;
+        self.z /= rhs;        
     }
 }
 
