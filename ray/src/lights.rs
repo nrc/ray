@@ -4,29 +4,11 @@ use point::*;
 use rand;
 use {min, max, Scene, Ray, intersects, Attenuation};
 
-// TODO trait
-#[derive(Debug, Clone)]
-pub enum Light {
-    Point(PointLight),
-    Sphere(SphereLight),
+pub trait Light: Sync + Send {
+    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, view_vec: Option<Point>) -> Colour;
+    fn from(&mut self) -> &mut Point;
 }
 
-impl Light {
-    // If view_vec is None, illuminate will not take account of specular illumination.
-    pub fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, view_vec: Option<Point>) -> Colour {
-        match *self {
-            Light::Point(ref pl) => pl.illuminate(scene, point, normal, material, view_vec),
-            Light::Sphere(ref sl) => sl.illuminate(scene, point, normal, material, view_vec),
-        }
-    }
-
-    pub fn from(&mut self) -> &mut Point {
-        match *self {
-            Light::Point(ref mut pl) => &mut pl.from,
-            Light::Sphere(ref mut sl) => &mut sl.from,
-        }        
-    }
-}
 
 #[derive(Debug, Clone, new)]
 pub struct PointLight {
@@ -35,7 +17,7 @@ pub struct PointLight {
     attenuation: Option<Attenuation>,
 }
 
-impl PointLight {
+impl Light for PointLight {
     fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, view_vec: Option<Point>) -> Colour {
         let mut result = Colour::black();
 
@@ -74,6 +56,12 @@ impl PointLight {
         result
     }
 
+    fn from(&mut self) -> &mut Point {
+        &mut self.from
+    }
+}
+
+impl PointLight {
     fn attenuation_factor(&self, d: f64) -> f64 {
         match self.attenuation {
             Some(attenuation) => {
@@ -99,16 +87,7 @@ pub struct SphereLight{
     samples: u8,
 }
 
-impl SphereLight {
-    pub fn new(from: Point, radius: f64, colour: Colour) -> SphereLight {
-        SphereLight {
-            from: from,
-            radius: radius,
-            colour: colour,
-            samples: 16,
-        }
-    }
-
+impl Light for SphereLight {
     fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, _view_vec: Option<Point>) -> Colour {
         let mut result = Colour::black();
 
@@ -135,6 +114,21 @@ impl SphereLight {
         result
     }
 
+    fn from(&mut self) -> &mut Point {
+        &mut self.from
+    }
+}
+
+impl SphereLight {
+    pub fn new(from: Point, radius: f64, colour: Colour) -> SphereLight {
+        SphereLight {
+            from: from,
+            radius: radius,
+            colour: colour,
+            samples: 16,
+        }
+    }
+
     // Return a random point on the surface of the sphere.
     fn random_point(&self) -> Point {
         loop {
@@ -159,5 +153,4 @@ impl SphereLight {
             }
         }
     }
-
 }

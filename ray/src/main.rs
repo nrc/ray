@@ -41,7 +41,7 @@ fn max(v1: f64, v2: f64) -> f64 {
 
 fn init() -> Scene {
     let mut objects: Vec<Box<Object>> = vec![];
-    let mut lights = vec![];
+    let mut lights: Vec<Box<Light>> = vec![];
 
     // objects.push(new Sphere(new Point(20, 20, 0), 20, red_plastic()));
     objects.push(Box::new(Sphere::new(Point::new(-100.0, 0.0, 0.0), 40.0, Material::blue_plastic())));
@@ -49,7 +49,7 @@ fn init() -> Scene {
     // objects.push(new Polygon(new Point(150, -50, 250), new Point(150, -50, -150), new Point(-150, -50, -150), mirror()));
 
     // attenuation: { distance: 500, moderation: 0.5 }
-    lights.push(Light::Point(PointLight::new(Point::new(0.0, 60.0, -10.0), Colour::new(0.7, 0.7, 0.7), None)));
+    lights.push(Box::new(PointLight::new(Point::new(0.0, 60.0, -10.0), Colour::new(0.7, 0.7, 0.7), None)));
     // lights.push(new SphereLight(new Point(100, 150, 0), 20, new Colour(0.7, 0.7, 0.7)));
     // lights.push(new PointLight(new Point(-150, 0, -150), new Colour(0.5, 0.5, 0.5), null));
 
@@ -93,7 +93,7 @@ impl Rendered {
 }
 
 fn render(mut scene: Scene) -> Arc<Mutex<Rendered>> {
-    let mut result = Arc::new(Mutex::new(Rendered::new(400, 400)));
+    let result = Arc::new(Mutex::new(Rendered::new(400, 400)));
 
     world_transform(&mut scene);
 
@@ -215,6 +215,7 @@ impl Scene {
         let sub_pixel_x = scale_x / sub_const;
         let sub_pixel_y = scale_y / sub_const;
 
+        // TODO could we clone the scene rather than making an Arc?
         let this = Arc::new(self);
 
         let running_count = Arc::new(Mutex::new(THREADS));
@@ -317,7 +318,7 @@ pub struct Attenuation {
 
 pub struct Scene {
     objects: Vec<Box<Object>>,
-    lights: Vec<Light>,
+    lights: Vec<Box<Light>>,
     ambient_light: Colour,
     eye: Eye,
     background: Colour,
