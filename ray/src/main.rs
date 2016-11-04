@@ -32,11 +32,11 @@ const SUPER_SAMPLES: u8 = 2;
 const THREADS: u32 = 4;
 
 // Because std::cmp::min/max needs Ord, not PartialOrd.
-fn min(v1: f64, v2: f64) -> f64 {
+fn min(v1: f32, v2: f32) -> f32 {
     if v1 >= v2 { v2 } else { v1 }
 }
 
-fn max(v1: f64, v2: f64) -> f64 {
+fn max(v1: f32, v2: f32) -> f32 {
     if v2 >= v1 { v2 } else { v1 }
 }
 
@@ -210,12 +210,12 @@ impl Scene {
             (dest.width, dest.height)
         };
 
-        let trans_x = width as f64 / 2.0;
-        let trans_y = height as f64 / 2.0;
-        let scale_x = self.eye.width / width as f64;
-        let scale_y = -self.eye.height / height as f64;
+        let trans_x = width as f32 / 2.0;
+        let trans_y = height as f32 / 2.0;
+        let scale_x = self.eye.width / width as f32;
+        let scale_y = -self.eye.height / height as f32;
 
-        let sub_const = (SUPER_SAMPLES * 2) as f64;
+        let sub_const = (SUPER_SAMPLES * 2) as f32;
         let sub_pixel_x = scale_x / sub_const;
         let sub_pixel_y = scale_y / sub_const;
 
@@ -236,9 +236,9 @@ impl Scene {
                     if y >= height {
                         break;
                     }
-                    let image_y = (y as f64 - trans_y) * scale_y;
+                    let image_y = (y as f32 - trans_y) * scale_y;
                     for x in 0..width {
-                        let image_x = (x as f64 - trans_x) * scale_x;
+                        let image_x = (x as f32 - trans_x) * scale_x;
 
                         let mut sum = Colour::black();
                         let mut yy = image_y - (scale_y / 2.0);
@@ -255,7 +255,7 @@ impl Scene {
                             yy += sub_pixel_y;
                         }
 
-                        dest.set_pixel(x, y, sum * (1.0 / (SUPER_SAMPLES * SUPER_SAMPLES) as f64));
+                        dest.set_pixel(x, y, sum * (1.0 / (SUPER_SAMPLES * SUPER_SAMPLES) as f32));
                     }
                     y += THREADS;
                 }
@@ -291,7 +291,7 @@ pub struct Intersection<'scene> {
     object: &'scene Object,
     normal: Point,
     point: Point,
-    t: f64,
+    t: f32,
 }
 
 impl<'scene> PartialOrd for Intersection<'scene> {
@@ -316,8 +316,8 @@ impl<'scene> Eq for Intersection<'scene> {}
 
 #[derive(Debug, Clone, Copy, new)]
 pub struct Attenuation {
-    distance: f64,
-    moderation: f64,
+    distance: f32,
+    moderation: f32,
 }
 
 pub struct Scene {
@@ -331,9 +331,9 @@ pub struct Scene {
 struct Eye {
     from: Point,
     at: Point,
-    length: f64,
-    width: f64,
-    height: f64,
+    length: f32,
+    width: f32,
+    height: f32,
 }
 
 fn run(file_name: &str) {
@@ -351,7 +351,7 @@ fn run(file_name: &str) {
         encoder.encode(&*data.data.get(), data.width, data.height, ColorType::RGBA(8)).unwrap();
     }
 
-    println!("Time: {}s", t.as_secs() as f64 + t.subsec_nanos() as f64 / 1_000_000_000.0);
+    println!("Time: {}s", t.as_secs() as f32 + t.subsec_nanos() as f32 / 1_000_000_000.0);
 }
 
 fn main() {

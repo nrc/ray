@@ -62,7 +62,7 @@ impl Light for PointLight {
 }
 
 impl PointLight {
-    fn attenuation_factor(&self, d: f64) -> f64 {
+    fn attenuation_factor(&self, d: f32) -> f32 {
         match self.attenuation {
             Some(attenuation) => {
                 if d >= attenuation.distance {
@@ -82,7 +82,7 @@ impl PointLight {
 #[derive(Debug, Clone)]
 pub struct SphereLight{
     from: Point,
-    radius: f64,
+    radius: f32,
     colour: Colour,
     samples: u8,
 }
@@ -105,7 +105,7 @@ impl Light for SphereLight {
                 // Facing away from light.
                 continue;
             }
-            let diffuse = material.diffuse * (diffuse_dot / self.samples as f64) * self.colour;
+            let diffuse = material.diffuse * (diffuse_dot / self.samples as f32) * self.colour;
             result += diffuse;
 
             // Could compute a specular component, but seems expensive and maybe inappropriate.
@@ -120,7 +120,7 @@ impl Light for SphereLight {
 }
 
 impl SphereLight {
-    pub fn new(from: Point, radius: f64, colour: Colour) -> SphereLight {
+    pub fn new(from: Point, radius: f32, colour: Colour) -> SphereLight {
         SphereLight {
             from: from,
             radius: radius,
@@ -133,12 +133,12 @@ impl SphereLight {
     fn random_point(&self) -> Point {
         loop {
             // Compute a random point in an axis-aligned cube at the origin, covering -1 to 1.
-            let dx = rand::random::<f64>() * 2.0 - 1.0;
-            let dy = rand::random::<f64>() * 2.0 - 1.0;
-            let dz = rand::random::<f64>() * 2.0 - 1.0;
+            let dx = rand::random::<f32>() * 2.0 - 1.0;
+            let dy = rand::random::<f32>() * 2.0 - 1.0;
+            let dz = rand::random::<f32>() * 2.0 - 1.0;
 
             // Check if our random point is in the sphere (happens apx 50% of the time).
-            let sum: f64 = dx * dx + dy * dy + dz * dz;
+            let sum: f32 = dx * dx + dy * dy + dz * dz;
             if sum <= 1.0 {
                 // Project the point in the sphere on to the surface by normalising.
                 let sqrt_sum = sum.sqrt();

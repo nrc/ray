@@ -2,9 +2,9 @@ use std::ops::{Add, Mul, AddAssign, MulAssign};
 
 #[derive(Debug, Clone, Copy, new)]
 pub struct Colour {
-    pub r: f64,
-    pub g: f64,
-    pub b: f64,
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
 }
 
 impl Colour {
@@ -61,10 +61,10 @@ impl Mul for Colour {
     }
 }
 
-impl Mul<f64> for Colour {
+impl Mul<f32> for Colour {
     type Output = Colour;
 
-    fn mul(self, rhs: f64) -> Colour {
+    fn mul(self, rhs: f32) -> Colour {
         Colour::new(self.r * rhs,
                     self.g * rhs,
                     self.b * rhs)
@@ -79,8 +79,8 @@ impl MulAssign for Colour {
     }
 }
 
-impl MulAssign<f64> for Colour {
-    fn mul_assign(&mut self, rhs: f64) {
+impl MulAssign<f32> for Colour {
+    fn mul_assign(&mut self, rhs: f32) {
         self.r *= rhs;
         self.g *= rhs;
         self.b *= rhs;        
@@ -93,7 +93,7 @@ pub struct Material {
     pub specular: Colour,
     pub ambient: Colour,
     pub reflected: Colour,
-    pub shininess: f64,
+    pub shininess: f32,
 }
 
 impl Material {

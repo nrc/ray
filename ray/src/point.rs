@@ -1,12 +1,12 @@
 use std::ops::{Mul, Add, Sub, AddAssign, MulAssign, SubAssign};
 
-pub type Matrix = [[f64; 3]; 3];
+pub type Matrix = [[f32; 3]; 3];
 
 #[derive(Debug, Clone, Copy, new)]
 pub struct Point {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
 }
 
 impl Point {
@@ -33,7 +33,7 @@ impl Point {
         self
     }
 
-    pub fn magnitude(&self) -> f64 {
+    pub fn magnitude(&self) -> f32 {
         (self.x.powf(2.0) + self.y.powf(2.0) + self.z.powf(2.0)).sqrt()
     }
 }
@@ -74,25 +74,25 @@ impl SubAssign for Point {
     }
 }
 
-impl Mul<f64> for Point {
+impl Mul<f32> for Point {
     type Output = Point;
 
-    fn mul(self, rhs: f64) -> Point {
+    fn mul(self, rhs: f32) -> Point {
         Point::new(self.x * rhs,
                    self.y * rhs,
                    self.z * rhs)
     }
 }
 
-impl MulAssign<f64> for Point {
-    fn mul_assign(&mut self, rhs: f64) {
+impl MulAssign<f32> for Point {
+    fn mul_assign(&mut self, rhs: f32) {
         self.x *= rhs;
         self.y *= rhs;
         self.z *= rhs;        
     }
 }
 
-pub fn dot(a: Point, b: Point) -> f64 {
+pub fn dot(a: Point, b: Point) -> f32 {
     a.x * b.x +
     a.y * b.y +
     a.z * b.z

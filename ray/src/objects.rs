@@ -7,7 +7,7 @@ use {Intersection, Ray};
 #[derive(Debug, Clone, new)]
 pub struct Sphere {
     center: Point,
-    radius: f64,
+    radius: f32,
     material: Material,
 }
 
@@ -23,10 +23,10 @@ struct PolygonInternals {
     normal: Point,
     u: Point,
     v: Point,
-    uv: f64,
-    uu: f64,
-    vv: f64,
-    triangle_denom: f64,
+    uv: f32,
+    uu: f32,
+    vv: f32,
+    triangle_denom: f32,
 }
 
 pub trait Object: Sync + Send {
