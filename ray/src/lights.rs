@@ -127,7 +127,7 @@ impl SphereLight {
             from: from,
             radius: radius,
             colour: colour,
-            samples: 16,
+            samples: 32,
         }
     }
 

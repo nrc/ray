@@ -10,7 +10,6 @@ pub struct Point {
 }
 
 impl Point {
-    #[must_use]
     pub fn post_mult(mut self, matrix: &Matrix) -> Point {
         let new_x = self.x * matrix[0][0] + self.y * matrix[1][0] + self.z * matrix[2][0];
         let new_y = self.x * matrix[0][1] + self.y * matrix[1][1] + self.z * matrix[2][1];
@@ -23,7 +22,6 @@ impl Point {
         self
     }
 
-    #[must_use]
     pub fn normalise(mut self) -> Point {
         let magnitude = self.magnitude();
         self.x /= magnitude;

@@ -108,4 +108,8 @@ impl Material {
     pub fn mirror() -> Material {
         Material::new(Colour::dark_grey(), Colour::grey(), Colour::dark_grey(), Colour::grey(), 2.0)
     }
+
+    pub fn matte_grey() -> Material {
+        Material::new(Colour::dark_grey(), Colour::black(), Colour::black(), Colour::dark_grey(), 2.0)
+    }
 }

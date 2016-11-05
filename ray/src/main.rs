@@ -43,26 +43,64 @@ fn max(v1: f32, v2: f32) -> f32 {
 
 fn init() -> Scene {
     let mut objects: Vec<Box<Object>> = vec![];
-    let mut lights: Vec<Box<Light>> = vec![];
 
-    // objects.push(new Sphere(new Point(20, 20, 0), 20, red_plastic()));
-    objects.push(Box::new(Sphere::new(Point::new(-100.0, 0.0, 0.0), 40.0, Material::blue_plastic())));
-    objects.push(Box::new(Sphere::new(Point::new(30.0, 0.0, 0.0), 20.0, Material::blue_plastic())));
-    // objects.push(new Polygon(new Point(150, -50, 250), new Point(150, -50, -150), new Point(-150, -50, -150), mirror()));
+    for i in 0..3 {
+        for j in 0..3 {
+            objects.push(Box::new(Sphere::new(Point::new(i as f32 * 50.0 - 50.0, 0.0, j as f32 * 50.0 - 50.0), (i + j + 1) as f32 * 5.0, Material::red_plastic())));
+        }
+    }
+    for i in 0..2 {
+        for j in 0..2 {
+            objects.push(Box::new(Sphere::new(Point::new(i as f32 * 50.0 - 25.0, 50.0, j as f32 * 50.0 - 25.0), 20.0, Material::blue_plastic())));
+        }
+    }
+
+    objects.push(Box::new(Polygon::new(Point::new(0.0, -50.0, 0.0),
+                                       Point::new(0.0, -50.0, -100.0),
+                                       Point::new(-100.0, -50.0, 0.0),
+                                       Material::matte_grey())));
+    objects.push(Box::new(Polygon::new(Point::new(0.0, -50.0, -100.0),
+                                       Point::new(-100.0, -50.0, -100.0),
+                                       Point::new(-100.0, -50.0, 0.0),
+                                       Material::matte_grey())));
+    objects.push(Box::new(Polygon::new(Point::new(100.0, -50.0, 0.0),
+                                       Point::new(100.0, -50.0, -100.0),
+                                       Point::new(0.0, -50.0, 0.0),
+                                       Material::mirror())));
+    objects.push(Box::new(Polygon::new(Point::new(100.0, -50.0, -100.0),
+                                       Point::new(0.0, -50.0, -100.0),
+                                       Point::new(0.0, -50.0, 0.0),
+                                       Material::mirror())));
+    objects.push(Box::new(Polygon::new(Point::new(0.0, -50.0, 100.0),
+                                       Point::new(0.0, -50.0, 0.0),
+                                       Point::new(-100.0, -50.0, 100.0),
+                                       Material::mirror())));
+    objects.push(Box::new(Polygon::new(Point::new(0.0, -50.0, 0.0),
+                                       Point::new(-100.0, -50.0, 0.0),
+                                       Point::new(-100.0, -50.0, 100.0),
+                                       Material::mirror())));
+    objects.push(Box::new(Polygon::new(Point::new(100.0, -50.0, 100.0),
+                                       Point::new(100.0, -50.0, 0.0),
+                                       Point::new(0.0, -50.0, 100.0),
+                                       Material::matte_grey())));
+    objects.push(Box::new(Polygon::new(Point::new(100.0, -50.0, 0.0),
+                                       Point::new(0.0, -50.0, 0.0),
+                                       Point::new(0.0, -50.0, 100.0),
+                                       Material::matte_grey())));
 
     // attenuation: { distance: 500, moderation: 0.5 }
-    lights.push(Box::new(PointLight::new(Point::new(0.0, 60.0, -10.0), Colour::new(0.7, 0.7, 0.7), None)));
-    // lights.push(new SphereLight(new Point(100, 150, 0), 20, new Colour(0.7, 0.7, 0.7)));
-    // lights.push(new PointLight(new Point(-150, 0, -150), new Colour(0.5, 0.5, 0.5), null));
+    let mut lights: Vec<Box<Light>> = vec![];
+    lights.push(Box::new(SphereLight::new(Point::new(-60.0, 100.0, -80.0), 30.0, Colour::new(0.8, 0.8, 0.8))));
+    lights.push(Box::new(PointLight::new(Point::new(60.0, 80.0, -80.0), Colour::new(0.2, 0.2, 0.2), None)));
 
     Scene {
         objects: objects,
         lights: lights,
         ambient_light: Colour::new(0.2, 0.2, 0.2),
         eye: Eye {
-            from: Point::new(0.0, 0.0, -300.0),
+            from: Point::new(140.0, 100.0, -300.0),
             at: Point::new(0.0, 0.0, 0.0),
-            length: 50.0,
+            length: 70.0,
             width: 50.0,
             height: 50.0,
         },
@@ -99,7 +137,7 @@ impl Rendered {
 }
 
 fn render(mut scene: Scene) -> Arc<Rendered> {
-    let result = Arc::new(Rendered::new(400, 400));
+    let result = Arc::new(Rendered::new(800, 800));
 
     world_transform(&mut scene);
 
@@ -126,35 +164,27 @@ fn world_transform(scene: &mut Scene) {
     // Should be (0, 0, 0);
     scene.eye.from -= from;
 
-    // console.log("translate");
-    // console.log(object.center);
-    // console.log(light.from);
-    // console.log(eye.at);
-    // console.log(eye.from);
-
     // Rotate the world so that eye.at is on the z-axis (i.e., eye.at.x == eye.at.y == 0).
+    // We first rotate around the y-axis until we are aligned with the z-axis,
+    // then around the z-axis until we are on the x/z plane.
     // Compute the rotation matrix.
-    let sqrt_ax_sq_plus_az_sq = (scene.eye.at.x * scene.eye.at.x + scene.eye.at.z * scene.eye.at.z).sqrt();
-    let sqrt_ax_sq_plus_ay_sq_plus_az_sq = (scene.eye.at.x * scene.eye.at.x + scene.eye.at.y * scene.eye.at.y + scene.eye.at.z * scene.eye.at.z).sqrt();
+    let hyp_y = (scene.eye.at.x * scene.eye.at.x + scene.eye.at.z * scene.eye.at.z).sqrt();
+    let sin_y = scene.eye.at.x / hyp_y;
+    let cos_y = scene.eye.at.z / hyp_y;
+    let rot_y_matrix = [[cos_y, 0.0, sin_y],
+                        [0.0, 1.0, 0.0],
+                        [-sin_y, 0.0, cos_y]];
+    scene.transform(&rot_y_matrix);
 
-    let sin_tilt = scene.eye.at.y / sqrt_ax_sq_plus_ay_sq_plus_az_sq;
-    let cos_tilt = sqrt_ax_sq_plus_az_sq / sqrt_ax_sq_plus_ay_sq_plus_az_sq;
-    let sin_pan = scene.eye.at.x / sqrt_ax_sq_plus_az_sq;
-    let cos_pan = scene.eye.at.z / sqrt_ax_sq_plus_az_sq;
+    let hyp_x = (scene.eye.at.y * scene.eye.at.y + scene.eye.at.z * scene.eye.at.z).sqrt();
+    let sin_x = scene.eye.at.y / hyp_x;
+    let cos_x = scene.eye.at.z / hyp_x;
+    let rot_x_matrix = [[1.0, 0.0, 0.0],
+                        [0.0, cos_x, sin_x],
+                        [0.0, -sin_x, cos_x]];
+    scene.transform(&rot_x_matrix);
 
-    let rot_at_matrix = [[cos_tilt * cos_pan, -sin_tilt, cos_tilt * sin_pan],
-                         [sin_tilt * cos_pan, cos_tilt, sin_tilt * sin_pan],
-                         [-sin_pan, 0.0, cos_pan]];
-
-    for o in &mut scene.objects {
-        o.transform(&rot_at_matrix);
-    }
-    for l in &mut scene.lights {
-        l.from().post_mult(&rot_at_matrix);
-    }
-    scene.eye.at.post_mult(&rot_at_matrix);
-
-    // println!("post-translation: {:?}, {:?}, {:?}",
+    // println!("post-transform: {:?}, {:?}, {:?}",
     //          scene.lights[0].from(),
     //          scene.eye.from,
     //          scene.eye.at);
@@ -277,6 +307,16 @@ impl Scene {
             }
             thread::park();
         }
+    }
+
+    fn transform(&mut self, m: &Matrix) {
+        for o in &mut self.objects {
+            o.transform(m);
+        }
+        for l in &mut self.lights {
+            *l.from() = l.from().post_mult(m);
+        }
+        self.eye.at = self.eye.at.post_mult(m);
     }
 }
 

@@ -52,7 +52,7 @@ impl Object for Sphere {
         if under_sqrt >= 0.0 {
             let sqrt = under_sqrt.sqrt();
             let t = -sqrt - l_dot_rel_center;
-            if t <= -0.01 {
+            if t <= 0.1 {
                 // Intersection is behind the origin of the ray.
                 return None;
             }
@@ -79,7 +79,7 @@ impl Object for Sphere {
 }
 
 impl Polygon {
-    fn new(p1: Point, p2: Point, p3: Point, material: Material) -> Polygon {
+    pub fn new(p1: Point, p2: Point, p3: Point, material: Material) -> Polygon {
         Polygon {
             p1: p1,
             p2: p2,
@@ -155,7 +155,7 @@ impl Object for Polygon {
             return None;
         }
 
-        Some(Intersection::new(self, point, normal, t))
+        Some(Intersection::new(self, normal, point, t))
     }
 
     fn translate(&mut self, v: Point) {
