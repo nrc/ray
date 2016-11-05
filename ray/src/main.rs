@@ -1,4 +1,5 @@
 #![feature(proc_macro)]
+#![feature(integer_atomics)]
 
 extern crate image;
 extern crate rand;
