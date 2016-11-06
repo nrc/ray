@@ -260,6 +260,9 @@ impl Scene {
         for t in &mut self.triangles {
             t.pre_compute();
         }
+        for l in &mut self.sphere_lights {
+            l.pre_compute();
+        }
     }
 
     fn render(mut self, dest: Arc<Rendered>) {

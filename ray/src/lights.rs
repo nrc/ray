@@ -1,10 +1,11 @@
 use colour::*;
 use point::*;
-
-use rand;
 use {min, max, Scene, Ray, intersects, Attenuation};
 
-pub trait Light: Sync + Send {
+use rand;
+use std::cell::UnsafeCell;
+
+pub trait Light: Send {
     fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, view_vec: Option<Point>) -> Colour;
     fn from(&mut self) -> &mut Point;
 }
@@ -80,13 +81,28 @@ impl PointLight {
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct SphereLight{
     from: Point,
     radius: f32,
     colour: Colour,
     samples: u8,
-    // TODO pre-compute random points
+
+    rand_points: [Point; 256],
+    cur_point: UnsafeCell<u8>,
+}
+
+impl Clone for SphereLight {
+    fn clone(&self) -> SphereLight {
+        SphereLight{
+            from: self.from.clone(),
+            radius: self.radius,
+            colour: self.colour.clone(),
+            samples: self.samples,
+
+            rand_points: self.rand_points,
+            cur_point: UnsafeCell::new(0),
+        }        
+    }
 }
 
 impl Light for SphereLight {
@@ -94,7 +110,10 @@ impl Light for SphereLight {
         let mut result = Colour::black();
 
         for _ in 0..self.samples {
-            let light_point = self.random_point();
+            let light_point = unsafe { self.rand_points[*self.cur_point.get() as usize] };
+            unsafe {
+                *self.cur_point.get() = (*self.cur_point.get()).wrapping_add(1);
+            }
             let light_vec = (light_point - point).normalise();
             let light_ray = Ray::new(point, light_vec);
             if intersects(scene, &light_ray).is_some() {
@@ -128,6 +147,14 @@ impl SphereLight {
             radius: radius,
             colour: colour,
             samples: 32,
+            rand_points: [Point::new(0.0, 0.0, 0.0); 256],
+            cur_point: UnsafeCell::new(0),
+        }
+    }
+
+    pub fn pre_compute(&mut self) {
+        for i in 0..256 {
+            self.rand_points[i] = self.random_point();
         }
     }
 
