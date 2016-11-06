@@ -207,7 +207,7 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
 
     match intersects(scene, &ray) {
         Some(intersection) => {
-            let material = intersection.object.material().clone();
+            let material = &intersection.object.material();
             let mut result = Colour::black();
 
             let ambient = material.ambient * scene.ambient_light;
@@ -225,7 +225,7 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
                 } else {
                     None
                 };
-                result += light.illuminate(scene, intersection.point, intersection.normal, material.clone(), view_vec);
+                result += light.illuminate(scene, intersection.point, intersection.normal, material, view_vec);
             }
             for light in &scene.sphere_lights {
                 // Only compute specular illumination for primary rays.
@@ -234,7 +234,7 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
                 } else {
                     None
                 };
-                result += light.illuminate(scene, intersection.point, intersection.normal, material.clone(), view_vec);
+                result += light.illuminate(scene, intersection.point, intersection.normal, material, view_vec);
             }
 
             result

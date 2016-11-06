@@ -6,7 +6,7 @@ use rand;
 use std::cell::UnsafeCell;
 
 pub trait Light: Send {
-    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, view_vec: Option<Point>) -> Colour;
+    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: &Material, view_vec: Option<Point>) -> Colour;
     fn from(&mut self) -> &mut Point;
 }
 
@@ -19,7 +19,7 @@ pub struct PointLight {
 }
 
 impl Light for PointLight {
-    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, view_vec: Option<Point>) -> Colour {
+    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: &Material, view_vec: Option<Point>) -> Colour {
         let mut result = Colour::black();
 
         let mut light_vec = self.from - point;
@@ -106,7 +106,7 @@ impl Clone for SphereLight {
 }
 
 impl Light for SphereLight {
-    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: Material, _view_vec: Option<Point>) -> Colour {
+    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: &Material, _view_vec: Option<Point>) -> Colour {
         let mut result = Colour::black();
 
         for _ in 0..self.samples {

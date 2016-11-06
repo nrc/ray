@@ -24,14 +24,11 @@ impl Point {
     }
 
     pub fn normalise(self) -> Point {
-        let ms = self.data * self.data;
-        let magnitude = (ms.extract(0) + ms.extract(1) + ms.extract(2)).sqrt();
-        Point { data: self.data / f32x4::splat(magnitude) }
+        Point { data: self.data / f32x4::splat(self.magnitude()) }
     }
 
-    pub fn magnitude(&self) -> f32 {
-        let ms = self.data * self.data;
-        (ms.extract(0) + ms.extract(1) + ms.extract(2)).sqrt()
+    pub fn magnitude(self) -> f32 {
+        dot(self, self).sqrt()
     }
 
     pub fn x(self) -> f32 {
@@ -105,10 +102,13 @@ impl DivAssign<f32> for Point {
 
 pub fn dot(a: Point, b: Point) -> f32 {
     let ms = a.data * b.data;
-    ms.extract(0) + ms.extract(1) + ms.extract(2)
+    let mut buf = [0.0; 4];
+    ms.store(&mut buf, 0);
+    buf[0] + buf[1] + buf[2]
 }
 
 pub fn cross(a: Point, b: Point) -> Point {
+    // TODO could use SIMD shuffles.
     Point::new(a.y() * b.z() - a.z() * b.y(),
                a.z() * b.x() - a.x() * b.z(),
                a.x() * b.y() - a.y() * b.x())
