@@ -4,7 +4,7 @@
     <title>ray tracer</title>
 </head>
 <body>
-    <canvas id="canvas" width="400" height="400">no canvas?</canvas>
+    <canvas id="canvas" width="800" height="800">no canvas?</canvas>
 </body>
 <script>
 "use strict";
@@ -24,20 +24,67 @@ let super_samples = 2;
 let objects = [];
 let lights = [];
 let ambient_light = { colour: new Colour(0.2, 0.2, 0.2) };
-let eye = { from: new Point(0, 0, -300), at: new Point(0, 0, 0), length: 50, width: 50, height: 50 };
+let eye = { from: new Point(140, 100, -300), at: new Point(0, 0, 0), length: 70, width: 50, height: 50 };
 let background = black();
 
 init();
 render();
 
 function init() {
+    for (let i = 0; i < 3; ++i) {
+        for (let j = 0; j < 3; ++j) {
+            objects.push(new Sphere(new Point(i * 50.0 - 50.0, 0.0, j * 50.0 - 50.0), (i + j + 1) * 5.0, red_plastic()));
+        }
+    }
+    for (let i = 0; i < 2; ++i) {
+        for (let j = 0; j < 2; ++j) {
+            objects.push(new Sphere(new Point(i * 50.0 - 25.0, 50.0, j * 50.0 - 25.0), 20.0, blue_plastic()));
+        }
+    }
+
+    objects.push(new Polygon(new Point(0.0, -50.0, 0.0),
+                                       new Point(0.0, -50.0, -100.0),
+                                       new Point(-100.0, -50.0, 0.0),
+                                       matte_grey()));
+    objects.push(new Polygon(new Point(0.0, -50.0, -100.0),
+                                       new Point(-100.0, -50.0, -100.0),
+                                       new Point(-100.0, -50.0, 0.0),
+                                       matte_grey()));
+    objects.push(new Polygon(new Point(100.0, -50.0, 0.0),
+                                       new Point(100.0, -50.0, -100.0),
+                                       new Point(0.0, -50.0, 0.0),
+                                       mirror()));
+    objects.push(new Polygon(new Point(100.0, -50.0, -100.0),
+                                       new Point(0.0, -50.0, -100.0),
+                                       new Point(0.0, -50.0, 0.0),
+                                       mirror()));
+    objects.push(new Polygon(new Point(0.0, -50.0, 100.0),
+                                       new Point(0.0, -50.0, 0.0),
+                                       new Point(-100.0, -50.0, 100.0),
+                                       mirror()));
+    objects.push(new Polygon(new Point(0.0, -50.0, 0.0),
+                                       new Point(-100.0, -50.0, 0.0),
+                                       new Point(-100.0, -50.0, 100.0),
+                                       mirror()));
+    objects.push(new Polygon(new Point(100.0, -50.0, 100.0),
+                                       new Point(100.0, -50.0, 0.0),
+                                       new Point(0.0, -50.0, 100.0),
+                                       matte_grey()));
+    objects.push(new Polygon(new Point(100.0, -50.0, 0.0),
+                                       new Point(0.0, -50.0, 0.0),
+                                       new Point(0.0, -50.0, 100.0),
+                                       matte_grey()));
+
+    lights.push(new SphereLight(new Point(-60.0, 100.0, -80.0), 30.0, new Colour(0.8, 0.8, 0.8)));
+    lights.push(new PointLight(new Point(60.0, 80.0, -80.0), new Colour(0.2, 0.2, 0.2), null));
+
     // objects.push(new Sphere(new Point(20, 20, 0), 20, red_plastic()));
-    objects.push(new Sphere(new Point(-100, 0, 0), 40, blue_plastic()));
-    objects.push(new Sphere(new Point(30, 0, 0), 20, blue_plastic()));
+    // objects.push(new Sphere(new Point(-100, 0, 0), 40, blue_plastic()));
+    // objects.push(new Sphere(new Point(30, 0, 0), 20, blue_plastic()));
     // objects.push(new Polygon(new Point(150, -50, 250), new Point(150, -50, -150), new Point(-150, -50, -150), mirror()));
 
     // attenuation: { distance: 500, moderation: 0.5 }
-    lights.push(new PointLight(new Point(0, 0, 0), new Colour(0.7, 0.7, 0.7), null));
+    // lights.push(new PointLight(new Point(0, 0, 0), new Colour(0.7, 0.7, 0.7), null));
     // lights.push(new SphereLight(new Point(100, 150, 0), 20, new Colour(0.7, 0.7, 0.7)));
     // lights.push(new PointLight(new Point(-150, 0, -150), new Colour(0.5, 0.5, 0.5), null));
 }
@@ -84,25 +131,21 @@ function world_transform() {
 
     // Rotate the world so that eye.at is on the z-axis (i.e., eye.at.x == eye.at.y == 0).
     // Compute the rotation matrix.
-    let sqrt_ax_sq_plus_az_sq = Math.sqrt(eye.at.x * eye.at.x + eye.at.z * eye.at.z);
-    let sqrt_ax_sq_plus_ay_sq_plus_az_sq = Math.sqrt(eye.at.x * eye.at.x + eye.at.y * eye.at.y + eye.at.z * eye.at.z);
+    let hyp_y = Math.sqrt(eye.at.x * eye.at.x + eye.at.z * eye.at.z);
+    let sin_y = eye.at.x / hyp_y;
+    let cos_y = eye.at.z / hyp_y;
+    let rot_y_matrix = [[cos_y, 0.0, sin_y],
+                        [0.0, 1.0, 0.0],
+                        [-sin_y, 0.0, cos_y]];
+    transform_scene(rot_y_matrix);
 
-    let sin_tilt = eye.at.y / sqrt_ax_sq_plus_ay_sq_plus_az_sq;
-    let cos_tilt = sqrt_ax_sq_plus_az_sq / sqrt_ax_sq_plus_ay_sq_plus_az_sq;
-    let sin_pan = eye.at.x / sqrt_ax_sq_plus_az_sq;
-    let cos_pan = eye.at.z / sqrt_ax_sq_plus_az_sq;
-
-    let rot_at_matrix = [[cos_tilt * cos_pan, -sin_tilt, cos_tilt * sin_pan],
-                         [sin_tilt * cos_pan, cos_tilt, sin_tilt * sin_pan],
-                         [-sin_pan, 0, cos_pan]];
-
-    for (let o of objects) {
-        o.transform(rot_at_matrix);
-    }
-    for (let l of lights) {
-        l.from.post_mult(rot_at_matrix);
-    }
-    eye.at.post_mult(rot_at_matrix);
+    let hyp_x = Math.sqrt(eye.at.y * eye.at.y + eye.at.z * eye.at.z);
+    let sin_x = eye.at.y / hyp_x;
+    let cos_x = eye.at.z / hyp_x;
+    let rot_x_matrix = [[1.0, 0.0, 0.0],
+                        [0.0, cos_x, sin_x],
+                        [0.0, -sin_x, cos_x]];
+    transform_scene(rot_x_matrix);
 
     // console.log("rotate");
     // console.log(object.center);
@@ -111,6 +154,16 @@ function world_transform() {
     // console.log(eye.at);
 
     // At this stage we are looking directly down the Z-axis from the origin to positive infinity.
+}
+
+function transform_scene(m) {
+    for (let o of objects) {
+        o.transform(m);
+    }
+    for (let l of lights) {
+        l.from.post_mult(m);
+    }
+    eye.at.post_mult(m);
 }
 
 // Returns a colour.
@@ -369,6 +422,10 @@ function blue_plastic() {
 
 function mirror() {
     return new Material(dark_grey(), grey(), dark_grey(), grey(), 2);
+}
+
+function matte_grey() {
+    return new Material(dark_grey(), black(), black(), dark_grey(), 2);
 }
 
 function red() {
