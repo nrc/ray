@@ -24,6 +24,20 @@ pub struct Polygon {
     internals: UnsafeCell<PolygonInternals>,
 }
 
+impl Clone for Polygon {
+    fn clone(&self) -> Polygon {
+        Polygon {
+            p1: self.p1,
+            p2: self.p2,
+            p3: self.p3,
+            material: self.material.clone(),
+            internals_present: AtomicU8::new(2),
+            internals: UnsafeCell::new(unsafe { mem::uninitialized() }),
+        }        
+    }
+}
+
+#[derive(Clone)]
 struct PolygonInternals {
     normal: Point,
     u: Point,

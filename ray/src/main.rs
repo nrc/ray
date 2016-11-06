@@ -272,13 +272,11 @@ impl Scene {
         let sub_pixel_x = scale_x / sub_const;
         let sub_pixel_y = scale_y / sub_const;
 
-        let this = Arc::new(self);
-
         // TODO could be an atomic, rather than a mutex
         let running_count = Arc::new(Mutex::new(THREADS));
 
         for t in 0..THREADS {
-            let this = this.clone();
+            let this = self.clone();
             let running_count = running_count.clone();
             let current = thread::current();
             let dest = dest.clone();
@@ -388,6 +386,7 @@ pub struct Attenuation {
     moderation: f32,
 }
 
+#[derive(Clone)]
 pub struct Scene {
     balls: Vec<Sphere>,
     triangles: Vec<Polygon>,
@@ -398,6 +397,7 @@ pub struct Scene {
     background: Colour,
 }
 
+#[derive(Clone)]
 struct Eye {
     from: Point,
     at: Point,
