@@ -3,9 +3,16 @@ name = "ray"
 version = "0.1.0"
 authors = ["Nick Cameron <ncameron@mozilla.com>"]
 
+[profile.release]
+opt-level = 3
+debug = true
+lto = true
+debug-assertions = false
+panic = 'abort'
+
 [dependencies]
 image = "*"
 rand = "*"
 derive-new = "0.1"
-
+simd = "0.1"
 
