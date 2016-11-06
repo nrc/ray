@@ -42,60 +42,62 @@ fn max(v1: f32, v2: f32) -> f32 {
 }
 
 fn init() -> Scene {
-    let mut objects: Vec<Box<Object>> = vec![];
-
+    let mut balls: Vec<Sphere> = vec![];
     for i in 0..3 {
         for j in 0..3 {
-            objects.push(Box::new(Sphere::new(Point::new(i as f32 * 50.0 - 50.0, 0.0, j as f32 * 50.0 - 50.0), (i + j + 1) as f32 * 5.0, Material::red_plastic())));
+            balls.push(Sphere::new(Point::new(i as f32 * 50.0 - 50.0, 0.0, j as f32 * 50.0 - 50.0), (i + j + 1) as f32 * 5.0, Material::red_plastic()));
         }
     }
     for i in 0..2 {
         for j in 0..2 {
-            objects.push(Box::new(Sphere::new(Point::new(i as f32 * 50.0 - 25.0, 50.0, j as f32 * 50.0 - 25.0), 20.0, Material::blue_plastic())));
+            balls.push(Sphere::new(Point::new(i as f32 * 50.0 - 25.0, 50.0, j as f32 * 50.0 - 25.0), 20.0, Material::blue_plastic()));
         }
     }
 
-    objects.push(Box::new(Polygon::new(Point::new(0.0, -50.0, 0.0),
-                                       Point::new(0.0, -50.0, -100.0),
-                                       Point::new(-100.0, -50.0, 0.0),
-                                       Material::matte_grey())));
-    objects.push(Box::new(Polygon::new(Point::new(0.0, -50.0, -100.0),
-                                       Point::new(-100.0, -50.0, -100.0),
-                                       Point::new(-100.0, -50.0, 0.0),
-                                       Material::matte_grey())));
-    objects.push(Box::new(Polygon::new(Point::new(100.0, -50.0, 0.0),
-                                       Point::new(100.0, -50.0, -100.0),
-                                       Point::new(0.0, -50.0, 0.0),
-                                       Material::mirror())));
-    objects.push(Box::new(Polygon::new(Point::new(100.0, -50.0, -100.0),
-                                       Point::new(0.0, -50.0, -100.0),
-                                       Point::new(0.0, -50.0, 0.0),
-                                       Material::mirror())));
-    objects.push(Box::new(Polygon::new(Point::new(0.0, -50.0, 100.0),
-                                       Point::new(0.0, -50.0, 0.0),
-                                       Point::new(-100.0, -50.0, 100.0),
-                                       Material::mirror())));
-    objects.push(Box::new(Polygon::new(Point::new(0.0, -50.0, 0.0),
-                                       Point::new(-100.0, -50.0, 0.0),
-                                       Point::new(-100.0, -50.0, 100.0),
-                                       Material::mirror())));
-    objects.push(Box::new(Polygon::new(Point::new(100.0, -50.0, 100.0),
-                                       Point::new(100.0, -50.0, 0.0),
-                                       Point::new(0.0, -50.0, 100.0),
-                                       Material::matte_grey())));
-    objects.push(Box::new(Polygon::new(Point::new(100.0, -50.0, 0.0),
-                                       Point::new(0.0, -50.0, 0.0),
-                                       Point::new(0.0, -50.0, 100.0),
-                                       Material::matte_grey())));
+    let mut triangles: Vec<Polygon> = vec![];
+    triangles.push(Polygon::new(Point::new(0.0, -50.0, 0.0),
+                                Point::new(0.0, -50.0, -100.0),
+                                Point::new(-100.0, -50.0, 0.0),
+                                Material::matte_grey()));
+    triangles.push(Polygon::new(Point::new(0.0, -50.0, -100.0),
+                                Point::new(-100.0, -50.0, -100.0),
+                                Point::new(-100.0, -50.0, 0.0),
+                                Material::matte_grey()));
+    triangles.push(Polygon::new(Point::new(100.0, -50.0, 0.0),
+                                Point::new(100.0, -50.0, -100.0),
+                                Point::new(0.0, -50.0, 0.0),
+                                Material::mirror()));
+    triangles.push(Polygon::new(Point::new(100.0, -50.0, -100.0),
+                                Point::new(0.0, -50.0, -100.0),
+                                Point::new(0.0, -50.0, 0.0),
+                                Material::mirror()));
+    triangles.push(Polygon::new(Point::new(0.0, -50.0, 100.0),
+                                Point::new(0.0, -50.0, 0.0),
+                                Point::new(-100.0, -50.0, 100.0),
+                                Material::mirror()));
+    triangles.push(Polygon::new(Point::new(0.0, -50.0, 0.0),
+                                Point::new(-100.0, -50.0, 0.0),
+                                Point::new(-100.0, -50.0, 100.0),
+                                Material::mirror()));
+    triangles.push(Polygon::new(Point::new(100.0, -50.0, 100.0),
+                                Point::new(100.0, -50.0, 0.0),
+                                Point::new(0.0, -50.0, 100.0),
+                                Material::matte_grey()));
+    triangles.push(Polygon::new(Point::new(100.0, -50.0, 0.0),
+                                Point::new(0.0, -50.0, 0.0),
+                                Point::new(0.0, -50.0, 100.0),
+                                Material::matte_grey()));
 
     // attenuation: { distance: 500, moderation: 0.5 }
-    let mut lights: Vec<Box<Light>> = vec![];
-    lights.push(Box::new(SphereLight::new(Point::new(-60.0, 100.0, -80.0), 30.0, Colour::new(0.8, 0.8, 0.8))));
-    lights.push(Box::new(PointLight::new(Point::new(60.0, 80.0, -80.0), Colour::new(0.2, 0.2, 0.2), None)));
+    let sl = SphereLight::new(Point::new(-60.0, 100.0, -80.0), 30.0, Colour::new(0.8, 0.8, 0.8));
+    let pl = PointLight::new(Point::new(60.0, 80.0, -80.0), Colour::new(0.2, 0.2, 0.2), None);
 
     Scene {
-        objects: objects,
-        lights: lights,
+        balls: balls,
+        triangles: triangles,
+        point_lights: vec![pl],
+        sphere_lights: vec![sl],
+
         ambient_light: Colour::new(0.2, 0.2, 0.2),
         eye: Eye {
             from: Point::new(140.0, 100.0, -300.0),
@@ -154,10 +156,16 @@ fn render(mut scene: Scene) -> Arc<Rendered> {
 fn world_transform(scene: &mut Scene) {
     // Translate the world so that eye.from is at the origin.
     let from = scene.eye.from;
-    for o in &mut scene.objects {
+    for o in &mut scene.balls {
         o.translate(from);
     }
-    for l in &mut scene.lights {
+    for o in &mut scene.triangles {
+        o.translate(from);
+    }
+    for l in &mut scene.point_lights {
+        *l.from() -= from;
+    }
+    for l in &mut scene.sphere_lights {
         *l.from() -= from;
     }
     scene.eye.at -= from;
@@ -185,7 +193,7 @@ fn world_transform(scene: &mut Scene) {
     scene.transform(&rot_x_matrix);
 
     // println!("post-transform: {:?}, {:?}, {:?}",
-    //          scene.lights[0].from(),
+    //          scene.point_lights[0].from(),
     //          scene.eye.from,
     //          scene.eye.at);
 
@@ -210,7 +218,16 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
             let reflected = trace(reflect_ray, depth + 1, scene);
             result += material.reflected * reflected;
 
-            for light in &scene.lights {
+            for light in &scene.point_lights {
+                // Only compute specular illumination for primary rays.
+                let view_vec = if depth == 0 {
+                    Some(ray.direction)
+                } else {
+                    None
+                };
+                result += light.illuminate(scene, intersection.point, intersection.normal, material.clone(), view_vec);
+            }
+            for light in &scene.sphere_lights {
                 // Only compute specular illumination for primary rays.
                 let view_vec = if depth == 0 {
                     Some(ray.direction)
@@ -227,10 +244,15 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
 }
 
 fn intersects<'a>(scene: &'a Scene, ray: &Ray) -> Option<Intersection<'a>> {
-    let mut results: Vec<Intersection<'a>> = scene.objects.iter().filter_map(|o| o.intersects(ray)).collect();
+    let mut results: Vec<Intersection<'a>> = scene
+        .balls
+        .iter()
+        .filter_map(|o| o.intersects(ray))
+        .chain(scene.triangles.iter().filter_map(|o| o.intersects(ray)))
+        .collect();
 
+    // TODO could just find min, rather than sorting.
     results.sort();
-
     results.into_iter().next()
 }
 
@@ -310,10 +332,16 @@ impl Scene {
     }
 
     fn transform(&mut self, m: &Matrix) {
-        for o in &mut self.objects {
+        for o in &mut self.balls {
             o.transform(m);
         }
-        for l in &mut self.lights {
+        for o in &mut self.triangles {
+            o.transform(m);
+        }
+        for l in &mut self.point_lights {
+            *l.from() = l.from().post_mult(m);
+        }
+        for l in &mut self.sphere_lights {
             *l.from() = l.from().post_mult(m);
         }
         self.eye.at = self.eye.at.post_mult(m);
@@ -361,8 +389,10 @@ pub struct Attenuation {
 }
 
 pub struct Scene {
-    objects: Vec<Box<Object>>,
-    lights: Vec<Box<Light>>,
+    balls: Vec<Sphere>,
+    triangles: Vec<Polygon>,
+    sphere_lights: Vec<SphereLight>,
+    point_lights: Vec<PointLight>,
     ambient_light: Colour,
     eye: Eye,
     background: Colour,
