@@ -24,14 +24,13 @@ impl Light for PointLight {
 
         let mut light_vec = self.from - point;
 
-        let distance = light_vec.magnitude();
-        let attenuation_factor = self.attenuation_factor(distance);
+        let attenuation_factor = self.attenuation_factor(light_vec);
         if attenuation_factor == 0.0 {
             return result;
         }
 
         // Normalise
-        light_vec /= distance;
+        light_vec = light_vec.normalise();
         let light_ray = Ray::new(point, light_vec);
         if intersects(scene, &light_ray).is_some() {
             // In shadow.
@@ -63,7 +62,8 @@ impl Light for PointLight {
 }
 
 impl PointLight {
-    fn attenuation_factor(&self, d: f32) -> f32 {
+    fn attenuation_factor(&self, v: Point) -> f32 {
+        let d = v.magnitude();
         match self.attenuation {
             Some(attenuation) => {
                 if d >= attenuation.distance {
@@ -176,9 +176,9 @@ impl SphereLight {
                 let dz = dz / sqrt_sum;
 
                 // Scale and translate to the desired sphere.
-                return Point::new(self.from.x + dx * self.radius,
-                                  self.from.y + dy * self.radius,
-                                  self.from.z + dz * self.radius);
+                return Point::new(self.from.x() + dx * self.radius,
+                                  self.from.y() + dy * self.radius,
+                                  self.from.z() + dz * self.radius);
             }
         }
     }

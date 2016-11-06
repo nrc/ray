@@ -4,6 +4,7 @@ extern crate image;
 extern crate rand;
 #[macro_use]
 extern crate derive_new;
+extern crate simd;
 
 use image::ColorType;
 use image::png::PNGEncoder;
@@ -129,9 +130,9 @@ impl Rendered {
     fn set_pixel(&self, x: u32, y: u32, colour: Colour) {
         let offset = 4 * (x + y * self.width) as usize;
         unsafe {
-            (&mut *self.data.get())[offset] = min(colour.r * 255.0, 255.0) as u8;
-            (&mut *self.data.get())[offset + 1] = min(colour.g * 255.0, 255.0) as u8;
-            (&mut *self.data.get())[offset + 2] = min(colour.b * 255.0, 255.0) as u8;
+            (&mut *self.data.get())[offset] = min(colour.r() * 255.0, 255.0) as u8;
+            (&mut *self.data.get())[offset + 1] = min(colour.g() * 255.0, 255.0) as u8;
+            (&mut *self.data.get())[offset + 2] = min(colour.b() * 255.0, 255.0) as u8;
             (&mut *self.data.get())[offset + 3] = 255;
         }
     }
@@ -175,17 +176,17 @@ fn world_transform(scene: &mut Scene) {
     // We first rotate around the y-axis until we are aligned with the z-axis,
     // then around the z-axis until we are on the x/z plane.
     // Compute the rotation matrix.
-    let hyp_y = (scene.eye.at.x * scene.eye.at.x + scene.eye.at.z * scene.eye.at.z).sqrt();
-    let sin_y = scene.eye.at.x / hyp_y;
-    let cos_y = scene.eye.at.z / hyp_y;
+    let hyp_y = (scene.eye.at.x() * scene.eye.at.x() + scene.eye.at.z() * scene.eye.at.z()).sqrt();
+    let sin_y = scene.eye.at.x() / hyp_y;
+    let cos_y = scene.eye.at.z() / hyp_y;
     let rot_y_matrix = [[cos_y, 0.0, sin_y],
                         [0.0, 1.0, 0.0],
                         [-sin_y, 0.0, cos_y]];
     scene.transform(&rot_y_matrix);
 
-    let hyp_x = (scene.eye.at.y * scene.eye.at.y + scene.eye.at.z * scene.eye.at.z).sqrt();
-    let sin_x = scene.eye.at.y / hyp_x;
-    let cos_x = scene.eye.at.z / hyp_x;
+    let hyp_x = (scene.eye.at.y() * scene.eye.at.y() + scene.eye.at.z() * scene.eye.at.z()).sqrt();
+    let sin_x = scene.eye.at.y() / hyp_x;
+    let cos_x = scene.eye.at.z() / hyp_x;
     let rot_x_matrix = [[1.0, 0.0, 0.0],
                         [0.0, cos_x, sin_x],
                         [0.0, -sin_x, cos_x]];

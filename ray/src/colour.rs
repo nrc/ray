@@ -1,13 +1,31 @@
+use simd::f32x4;
+
 use std::ops::{Add, Mul, AddAssign, MulAssign};
 
-#[derive(Debug, Clone, Copy, new)]
+#[derive(Debug, Clone, Copy)]
 pub struct Colour {
-    pub r: f32,
-    pub g: f32,
-    pub b: f32,
+    data: f32x4,
 }
 
 impl Colour {
+    pub fn new(r: f32, g: f32, b: f32) -> Colour {
+        Colour {
+            data: f32x4::new(r, g, b, 0.0),
+        }
+    }
+
+    pub fn r(&self) -> f32 {
+        self.data.extract(0)
+    }
+
+    pub fn g(&self) -> f32 {
+        self.data.extract(1)
+    }
+
+    pub fn b(&self) -> f32 {
+        self.data.extract(2)
+    }
+
     pub fn red() -> Colour {
         Colour::new(0.5, 0.0, 0.0)
     }
@@ -37,17 +55,13 @@ impl Add for Colour {
     type Output = Colour;
 
     fn add(self, rhs: Colour) -> Colour {
-        Colour::new(self.r + rhs.r,
-                    self.g + rhs.g,
-                    self.b + rhs.b)
+        Colour{ data: self.data + rhs.data }
     }
 }
 
 impl AddAssign for Colour {
     fn add_assign(&mut self, rhs: Colour) {
-        self.r += rhs.r;
-        self.g += rhs.g;
-        self.b += rhs.b;        
+        self.data = self.data + rhs.data;
     }
 }
 
@@ -55,9 +69,7 @@ impl Mul for Colour {
     type Output = Colour;
 
     fn mul(self, rhs: Colour) -> Colour {
-        Colour::new(self.r * rhs.r,
-                    self.g * rhs.g,
-                    self.b * rhs.b)
+        Colour { data: self.data * rhs.data }
     }
 }
 
@@ -65,25 +77,19 @@ impl Mul<f32> for Colour {
     type Output = Colour;
 
     fn mul(self, rhs: f32) -> Colour {
-        Colour::new(self.r * rhs,
-                    self.g * rhs,
-                    self.b * rhs)
+        Colour { data: self.data * f32x4::splat(rhs) }
     }
 }
 
 impl MulAssign for Colour {
     fn mul_assign(&mut self, rhs: Colour) {
-        self.r *= rhs.r;
-        self.g *= rhs.g;
-        self.b *= rhs.b;        
+        self.data = self.data * rhs.data;
     }
 }
 
 impl MulAssign<f32> for Colour {
     fn mul_assign(&mut self, rhs: f32) {
-        self.r *= rhs;
-        self.g *= rhs;
-        self.b *= rhs;        
+        self.data = self.data * f32x4::splat(rhs);
     }
 }
 
