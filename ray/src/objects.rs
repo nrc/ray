@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::mem;
 use std::cell::UnsafeCell;
 
@@ -18,8 +17,6 @@ pub struct Polygon {
     p2: Point,
     p3: Point,
     material: Material,
-    // 0 = yes, 1 = computing, 2 = no
-    internals_present: AtomicU8,
     // May be uninitialized.
     internals: UnsafeCell<PolygonInternals>,
 }
@@ -31,8 +28,7 @@ impl Clone for Polygon {
             p2: self.p2,
             p3: self.p3,
             material: self.material.clone(),
-            internals_present: AtomicU8::new(2),
-            internals: UnsafeCell::new(unsafe { mem::uninitialized() }),
+            internals: unsafe { UnsafeCell::new((*self.internals.get()).clone()) },
         }        
     }
 }
@@ -99,12 +95,11 @@ impl Polygon {
             p2: p2,
             p3: p3,
             material: material,
-            internals_present: AtomicU8::new(2),
             internals: UnsafeCell::new(unsafe { mem::uninitialized() }),
         }
     }
 
-    fn compute_normal(&self) {
+    pub fn pre_compute(&self) {
         let u = self.p2 - self.p1;
         let v = self.p3 - self.p1;
         let uv = dot(u, v);
@@ -123,7 +118,6 @@ impl Polygon {
                 triangle_denom: triangle_denom,            
             };
         }
-        self.internals_present.store(0, Ordering::SeqCst);
     }
 }
 
@@ -131,14 +125,6 @@ unsafe impl Sync for Polygon {}
 
 impl Object for Polygon {
     fn intersects(&self, ray: &Ray) -> Option<Intersection> {
-        if self.internals_present.load(Ordering::SeqCst) != 0 {
-            if self.internals_present.compare_and_swap(2, 1, Ordering::SeqCst) == 2 {
-                self.compute_normal()
-            } else {
-                while self.internals_present.load(Ordering::SeqCst) == 1 {}
-            }
-        }
-
         let internals = unsafe { &*self.internals.get() };
 
         let normal = internals.normal;
@@ -176,14 +162,12 @@ impl Object for Polygon {
         self.p1 -= v;
         self.p2 -= v;
         self.p3 -= v;
-        self.internals_present.store(2, Ordering::SeqCst)
     }
 
     fn transform(&mut self, m: &Matrix) {
         self.p1 = self.p1.post_mult(m);
         self.p2 = self.p2.post_mult(m);
         self.p3 = self.p3.post_mult(m);        
-        self.internals_present.store(2, Ordering::SeqCst)
     }
 
     fn material(&self) -> &Material {

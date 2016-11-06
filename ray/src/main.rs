@@ -1,5 +1,4 @@
 #![feature(proc_macro)]
-#![feature(integer_atomics)]
 
 extern crate image;
 extern crate rand;
@@ -257,7 +256,13 @@ fn intersects<'a>(scene: &'a Scene, ray: &Ray) -> Option<Intersection<'a>> {
 }
 
 impl Scene {
-    fn render(self, dest: Arc<Rendered>) {
+    fn pre_compute(&mut self) {
+        for t in &mut self.triangles {
+            t.pre_compute();
+        }
+    }
+
+    fn render(mut self, dest: Arc<Rendered>) {
         // We must translate and scale the pixel on to the image plane.
         let (width, height) = {
             (dest.width, dest.height)
@@ -271,6 +276,10 @@ impl Scene {
         let sub_const = (SUPER_SAMPLES * 2) as f32;
         let sub_pixel_x = scale_x / sub_const;
         let sub_pixel_y = scale_y / sub_const;
+
+        // Must be done after the world_transform, but before we clone the scene
+        // for each thread.
+        self.pre_compute();
 
         // TODO could be an atomic, rather than a mutex
         let running_count = Arc::new(Mutex::new(THREADS));
