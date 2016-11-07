@@ -1,4 +1,5 @@
 #![feature(proc_macro)]
+#![feature(link_llvm_intrinsics)]
 
 extern crate image;
 extern crate rand;
@@ -32,14 +33,20 @@ const RAY_DEPTH: u8 = 4;
 const SUPER_SAMPLES: u8 = 2;
 const THREADS: u32 = 4;
 
-// Because std::cmp::min/max needs Ord, not PartialOrd.
-fn min(v1: f32, v2: f32) -> f32 {
-    if v1 >= v2 { v2 } else { v1 }
+extern {
+    #[link_name = "llvm.minnum.f32"]
+    fn min_intrinsic(v1: f32, v2: f32) -> f32;
+    #[link_name = "llvm.maxnum.f32"]
+    fn max_intrinsic(v1: f32, v2: f32) -> f32;
 }
 
-fn max(v1: f32, v2: f32) -> f32 {
-    if v2 >= v1 { v2 } else { v1 }
+fn min(v1: f32, v2: f32) -> f32 {
+    unsafe { min_intrinsic(v1, v2) }
 }
+fn max(v1: f32, v2: f32) -> f32 {
+    unsafe { max_intrinsic(v1, v2) }
+}
+
 
 fn init() -> Scene {
     let mut balls: Vec<Sphere> = vec![];
