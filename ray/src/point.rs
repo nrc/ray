@@ -1,6 +1,8 @@
 use simd::f32x4;
 use std::ops::{Mul, Div, Add, Sub, AddAssign, MulAssign, SubAssign, DivAssign};
 
+use {min, max};
+
 pub type Matrix = [[f32; 3]; 3];
 
 #[derive(Debug, Clone, Copy)]
@@ -31,6 +33,30 @@ impl Point {
         dot(self, self).sqrt()
     }
 
+    pub fn inverse(self) -> Point {
+        Point { data: self.data.approx_reciprocal() }
+    }
+
+    pub fn min(self, rhs: Point) -> Point {
+        Point { data: self.data.min(rhs.data) }
+    }
+
+    pub fn max(self, rhs: Point) -> Point {
+        Point { data: self.data.max(rhs.data) }
+    }
+
+    pub fn h_min(self) -> f32 {
+        let mut buf = [0.0; 4];
+        self.data.store(&mut buf, 0);
+        min(buf[0], min(buf[1], buf[2]))
+    }
+
+    pub fn h_max(self) -> f32 {
+        let mut buf = [0.0; 4];
+        self.data.store(&mut buf, 0);
+        max(buf[0], max(buf[1], buf[2]))
+    }
+
     pub fn x(self) -> f32 {
         self.data.extract(0)
     }
@@ -52,11 +78,27 @@ impl Add for Point {
     }
 }
 
+impl Add<f32> for Point {
+    type Output = Point;
+
+    fn add(self, rhs: f32) -> Point {
+        Point { data: self.data + f32x4::splat(rhs) }
+    }
+}
+
 impl Sub for Point {
     type Output = Point;
 
     fn sub(self, rhs: Point) -> Point {
         Point { data: self.data - rhs.data }
+    }
+}
+
+impl Sub<f32> for Point {
+    type Output = Point;
+
+    fn sub(self, rhs: f32) -> Point {
+        Point { data: self.data - f32x4::splat(rhs) }
     }
 }
 
@@ -69,6 +111,14 @@ impl AddAssign for Point {
 impl SubAssign for Point {
     fn sub_assign(&mut self, rhs: Point) {
         self.data = self.data - rhs.data;
+    }
+}
+
+impl Mul for Point {
+    type Output = Point;
+
+    fn mul(self, rhs: Point) -> Point {
+        Point { data: self.data * rhs.data }
     }
 }
 

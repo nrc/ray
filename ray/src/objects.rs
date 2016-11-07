@@ -5,11 +5,12 @@ use point::*;
 use colour::*;
 use {Intersection, Ray};
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone)]
 pub struct Sphere {
     center: Point,
     radius: f32,
     material: Material,
+    bounding_box: Aabb,
 }
 
 pub struct Polygon {
@@ -17,8 +18,27 @@ pub struct Polygon {
     p2: Point,
     p3: Point,
     material: Material,
+    bounding_box: Aabb,
     // May be uninitialized.
     internals: UnsafeCell<PolygonInternals>,
+}
+
+#[derive(Debug, Clone, new)]
+pub struct Aabb {
+    min: Point,
+    max: Point,
+}
+
+impl Aabb {
+    pub fn intersects(&self, ray: &Ray) -> bool {
+        let t_min = (self.min - ray.origin) * ray.inverse;
+        let t_max = (self.max - ray.origin) * ray.inverse;
+
+        let min = t_min.min(t_max).h_max();
+        let max = t_min.max(t_max).h_min();
+
+        max >= min
+    }
 }
 
 impl Clone for Polygon {
@@ -28,6 +48,7 @@ impl Clone for Polygon {
             p2: self.p2,
             p3: self.p3,
             material: self.material.clone(),
+            bounding_box: self.bounding_box.clone(),
             internals: unsafe { UnsafeCell::new((*self.internals.get()).clone()) },
         }        
     }
@@ -51,8 +72,27 @@ pub trait Object: Sync + Send {
     fn material(&self) -> &Material;
 }
 
+impl Sphere {
+    pub fn new(center: Point, radius: f32, material: Material) -> Sphere {
+        Sphere {
+            center: center,
+            radius: radius,
+            material: material,
+            bounding_box: Aabb::new(Point::new(0.0, 0.0, 0.0), Point::new(0.0, 0.0, 0.0)),
+        }
+    }
+
+    pub fn pre_compute(&mut self) {
+        self.bounding_box = Aabb::new(self.center - self.radius, self.center + self.radius);
+    }
+}
+
 impl Object for Sphere {
     fn intersects(&self, ray: &Ray) -> Option<Intersection> {
+        // if !self.bounding_box.intersects(ray) {
+        //     return None;
+        // }
+
         let rel_center = ray.origin - self.center;
 
         let l_dot_rel_center = dot(ray.direction, rel_center);
@@ -96,10 +136,11 @@ impl Polygon {
             p3: p3,
             material: material,
             internals: UnsafeCell::new(unsafe { mem::uninitialized() }),
+            bounding_box: Aabb::new(Point::new(0.0, 0.0, 0.0), Point::new(0.0, 0.0, 0.0)),
         }
     }
 
-    pub fn pre_compute(&self) {
+    pub fn pre_compute(&mut self) {
         let u = self.p2 - self.p1;
         let v = self.p3 - self.p1;
         let uv = dot(u, v);
@@ -118,6 +159,10 @@ impl Polygon {
                 triangle_denom: triangle_denom,            
             };
         }
+
+        let min = self.p1.min(self.p2).min(self.p3);
+        let max = self.p1.max(self.p2).max(self.p3);
+        self.bounding_box = Aabb::new(min, max);
     }
 }
 
@@ -125,6 +170,10 @@ unsafe impl Sync for Polygon {}
 
 impl Object for Polygon {
     fn intersects(&self, ray: &Ray) -> Option<Intersection> {
+        // if !self.bounding_box.intersects(ray) {
+        //     return None;
+        // }
+
         let internals = unsafe { &*self.internals.get() };
 
         let normal = internals.normal;
@@ -137,6 +186,7 @@ impl Object for Polygon {
         }
 
         let t = dot(normal, self.p1 - ray.origin) / plane_denom;
+
         if t <= 0.001 {
             // Plane is behind ray's origin.
             return None;

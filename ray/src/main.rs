@@ -265,6 +265,9 @@ fn intersects<'a>(scene: &'a Scene, ray: &Ray) -> Option<Intersection<'a>> {
 
 impl Scene {
     fn pre_compute(&mut self) {
+        for b in &mut self.balls {
+            b.pre_compute();
+        }
         for t in &mut self.triangles {
             t.pre_compute();
         }
@@ -366,10 +369,21 @@ impl Scene {
     }
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone)]
 pub struct Ray {
     origin: Point,
     direction: Point,
+    inverse: Point,
+}
+
+impl Ray {
+    fn new(origin: Point, direction: Point) -> Ray {
+        Ray {
+            origin: origin,
+            direction: direction,
+            inverse: direction.inverse(),
+        }
+    }
 }
 
 #[derive(Clone, new)]
