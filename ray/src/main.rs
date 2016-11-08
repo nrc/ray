@@ -49,15 +49,17 @@ fn max(v1: f32, v2: f32) -> f32 {
 
 
 fn init() -> Scene {
-    let mut balls: Vec<Sphere> = vec![];
+    let mut balls1: Vec<Sphere> = vec![];
     for i in 0..3 {
         for j in 0..3 {
-            balls.push(Sphere::new(Point::new(i as f32 * 50.0 - 50.0, 0.0, j as f32 * 50.0 - 50.0), (i + j + 1) as f32 * 5.0, Material::red_plastic()));
+            balls1.push(Sphere::new(Point::new(i as f32 * 50.0 - 50.0, 0.0, j as f32 * 50.0 - 50.0), (i + j + 1) as f32 * 5.0, Material::red_plastic()));
         }
     }
+
+    let mut balls2: Vec<Sphere> = vec![];
     for i in 0..2 {
         for j in 0..2 {
-            balls.push(Sphere::new(Point::new(i as f32 * 50.0 - 25.0, 50.0, j as f32 * 50.0 - 25.0), 20.0, Material::blue_plastic()));
+            balls2.push(Sphere::new(Point::new(i as f32 * 50.0 - 25.0, 50.0, j as f32 * 50.0 - 25.0), 20.0, Material::blue_plastic()));
         }
     }
 
@@ -100,8 +102,9 @@ fn init() -> Scene {
     let pl = PointLight::new(Point::new(60.0, 80.0, -80.0), Colour::new(0.2, 0.2, 0.2), None);
 
     Scene {
-        balls: balls,
-        triangles: triangles,
+        balls1: Group::new(balls1),
+        balls2: Group::new(balls2),
+        triangles: Group::new(triangles),
         point_lights: vec![pl],
         sphere_lights: vec![sl],
 
@@ -163,12 +166,9 @@ fn render(mut scene: Scene) -> Arc<Rendered> {
 fn world_transform(scene: &mut Scene) {
     // Translate the world so that eye.from is at the origin.
     let from = scene.eye.from;
-    for o in &mut scene.balls {
-        o.translate(from);
-    }
-    for o in &mut scene.triangles {
-        o.translate(from);
-    }
+    scene.balls1.translate(from);
+    scene.balls2.translate(from);
+    scene.triangles.translate(from);
     for l in &mut scene.point_lights {
         *l.from() -= from;
     }
@@ -251,26 +251,18 @@ fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
 }
 
 fn intersects<'a>(scene: &'a Scene, ray: &Ray) -> Option<Intersection<'a>> {
-    let mut results: Vec<Intersection<'a>> = scene
-        .balls
-        .iter()
-        .filter_map(|o| o.intersects(ray))
-        .chain(scene.triangles.iter().filter_map(|o| o.intersects(ray)))
-        .collect();
+    let balls1 = scene.balls1.intersects(ray);
+    let balls2 = scene.balls2.intersects(ray);
+    let triangles = scene.triangles.intersects(ray);
 
-    // TODO could just find min, rather than sorting.
-    results.sort();
-    results.into_iter().next()
+    balls1.into_iter().chain(balls2.into_iter()).chain(triangles.into_iter()).min()
 }
 
 impl Scene {
     fn pre_compute(&mut self) {
-        for b in &mut self.balls {
-            b.pre_compute();
-        }
-        for t in &mut self.triangles {
-            t.pre_compute();
-        }
+        self.balls1.pre_compute();
+        self.balls2.pre_compute();
+        self.triangles.pre_compute();
         for l in &mut self.sphere_lights {
             l.pre_compute();
         }
@@ -353,12 +345,9 @@ impl Scene {
     }
 
     fn transform(&mut self, m: &Matrix) {
-        for o in &mut self.balls {
-            o.transform(m);
-        }
-        for o in &mut self.triangles {
-            o.transform(m);
-        }
+        self.balls1.transform(m);
+        self.balls2.transform(m);
+        self.triangles.transform(m);
         for l in &mut self.point_lights {
             *l.from() = l.from().post_mult(m);
         }
@@ -422,8 +411,9 @@ pub struct Attenuation {
 
 #[derive(Clone)]
 pub struct Scene {
-    balls: Vec<Sphere>,
-    triangles: Vec<Polygon>,
+    balls1: Group<Sphere>,
+    balls2: Group<Sphere>,
+    triangles: Group<Polygon>,
     sphere_lights: Vec<SphereLight>,
     point_lights: Vec<PointLight>,
     ambient_light: Colour,

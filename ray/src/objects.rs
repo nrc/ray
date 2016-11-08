@@ -1,5 +1,4 @@
 use std::mem;
-use std::cell::UnsafeCell;
 
 use point::*;
 use colour::*;
@@ -13,6 +12,7 @@ pub struct Sphere {
     bounding_box: Aabb,
 }
 
+#[derive(Clone)]
 pub struct Polygon {
     p1: Point,
     p2: Point,
@@ -20,7 +20,7 @@ pub struct Polygon {
     material: Material,
     bounding_box: Aabb,
     // May be uninitialized.
-    internals: UnsafeCell<PolygonInternals>,
+    internals: PolygonInternals,
 }
 
 #[derive(Debug, Clone, new)]
@@ -41,19 +41,6 @@ impl Aabb {
     }
 }
 
-impl Clone for Polygon {
-    fn clone(&self) -> Polygon {
-        Polygon {
-            p1: self.p1,
-            p2: self.p2,
-            p3: self.p3,
-            material: self.material.clone(),
-            bounding_box: self.bounding_box.clone(),
-            internals: unsafe { UnsafeCell::new((*self.internals.get()).clone()) },
-        }        
-    }
-}
-
 #[derive(Clone)]
 struct PolygonInternals {
     normal: Point,
@@ -65,11 +52,13 @@ struct PolygonInternals {
     triangle_denom: f32,
 }
 
-pub trait Object: Sync + Send {
+pub trait Object: Send {
     fn intersects(&self, ray: &Ray) -> Option<Intersection>;
     fn translate(&mut self, point: Point);
     fn transform(&mut self, m: &Matrix);
     fn material(&self) -> &Material;
+    fn pre_compute(&mut self);
+    fn bounding_box(&self) -> &Aabb;
 }
 
 impl Sphere {
@@ -80,10 +69,6 @@ impl Sphere {
             material: material,
             bounding_box: Aabb::new(Point::new(0.0, 0.0, 0.0), Point::new(0.0, 0.0, 0.0)),
         }
-    }
-
-    pub fn pre_compute(&mut self) {
-        self.bounding_box = Aabb::new(self.center - self.radius, self.center + self.radius);
     }
 }
 
@@ -126,6 +111,14 @@ impl Object for Sphere {
     fn material(&self) -> &Material {
         &self.material
     }
+
+    fn pre_compute(&mut self) {
+        self.bounding_box = Aabb::new(self.center - self.radius, self.center + self.radius);
+    }
+
+    fn bounding_box(&self) -> &Aabb {
+        &self.bounding_box
+    }
 }
 
 impl Polygon {
@@ -135,34 +128,9 @@ impl Polygon {
             p2: p2,
             p3: p3,
             material: material,
-            internals: UnsafeCell::new(unsafe { mem::uninitialized() }),
+            internals: unsafe { mem::uninitialized() },
             bounding_box: Aabb::new(Point::new(0.0, 0.0, 0.0), Point::new(0.0, 0.0, 0.0)),
         }
-    }
-
-    pub fn pre_compute(&mut self) {
-        let u = self.p2 - self.p1;
-        let v = self.p3 - self.p1;
-        let uv = dot(u, v);
-        let uu = dot(u, u);
-        let vv = dot(v, v);
-        let triangle_denom = uv * uv - uu * vv;
-
-        unsafe {
-            *(self.internals.get() as *mut PolygonInternals) = PolygonInternals {
-                normal: cross(u, v).normalise(),
-                u: u,
-                v: v,
-                uv: uv,
-                uu: uu,
-                vv: vv,
-                triangle_denom: triangle_denom,            
-            };
-        }
-
-        let min = self.p1.min(self.p2).min(self.p3);
-        let max = self.p1.max(self.p2).max(self.p3);
-        self.bounding_box = Aabb::new(min, max);
     }
 }
 
@@ -174,7 +142,7 @@ impl Object for Polygon {
         //     return None;
         // }
 
-        let internals = unsafe { &*self.internals.get() };
+        let internals = &self.internals;
 
         let normal = internals.normal;
 
@@ -222,5 +190,78 @@ impl Object for Polygon {
 
     fn material(&self) -> &Material {
         &self.material
+    }
+
+    fn pre_compute(&mut self) {
+        let u = self.p2 - self.p1;
+        let v = self.p3 - self.p1;
+        let uv = dot(u, v);
+        let uu = dot(u, u);
+        let vv = dot(v, v);
+        let triangle_denom = uv * uv - uu * vv;
+
+        self.internals = PolygonInternals {
+            normal: cross(u, v).normalise(),
+            u: u,
+            v: v,
+            uv: uv,
+            uu: uu,
+            vv: vv,
+            triangle_denom: triangle_denom,            
+        };
+
+        let min = self.p1.min(self.p2).min(self.p3);
+        let max = self.p1.max(self.p2).max(self.p3);
+        self.bounding_box = Aabb::new(min, max);
+    }
+
+    fn bounding_box(&self) -> &Aabb {
+        &self.bounding_box
+    }
+}
+
+#[derive(Clone)]
+pub struct Group<T: Object> {
+    objects: Vec<T>,
+    bounding_box: Aabb,
+}
+
+impl<T: Object> Group<T> {
+    pub fn new(objects: Vec<T>) -> Group<T> {
+        Group {
+            objects: objects,
+            bounding_box: Aabb::new(Point::new(0.0, 0.0, 0.0), Point::new(0.0, 0.0, 0.0)),
+        }
+    }
+
+    pub fn pre_compute(&mut self) {
+        let mut min = Point::new(::std::f32::INFINITY, ::std::f32::INFINITY, ::std::f32::INFINITY);
+        let mut max = Point::new(::std::f32::NEG_INFINITY, ::std::f32::NEG_INFINITY, ::std::f32::NEG_INFINITY);
+        for o in &mut self.objects {
+            o.pre_compute();
+            let bb = o.bounding_box();
+            min = min.min(bb.min);
+            max = max.max(bb.max);
+        }
+        self.bounding_box = Aabb::new(min, max);
+    }
+
+    pub fn intersects<'a>(&'a self, ray: &Ray) -> Option<Intersection<'a>> {
+        if !self.bounding_box.intersects(ray) {
+            return None;
+        }
+        self.objects.iter().filter_map(|o| o.intersects(ray)).min()
+    }
+
+    pub fn translate(&mut self, v: Point) {
+        for o in &mut self.objects {
+            o.translate(v);
+        }
+    }
+
+    pub fn transform(&mut self, m: &Matrix) {
+        for o in &mut self.objects {
+            o.transform(m);
+        }
     }
 }
