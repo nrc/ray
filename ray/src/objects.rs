@@ -201,7 +201,7 @@ impl Object for Polygon {
         let r = (internals.uv * wv - internals.vv * wu) / internals.triangle_denom;
         let s = (internals.uv * wu - internals.uu * wv) / internals.triangle_denom;
 
-        if r <= 0.001 || s <= 0.001 || r + s >= 1.0 {
+        if r <= 0.00001 || s <= 0.00001 || r + s >= 1.00001 {
             return None;
         }
 
