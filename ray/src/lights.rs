@@ -1,12 +1,12 @@
 use colour::*;
 use point::*;
-use {min, max, Scene, Ray, intersects, Attenuation};
+use {min, max, Scene, Ray, Attenuation};
 
 use rand;
 use std::cell::UnsafeCell;
 
 pub trait Light: Send {
-    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: &Material, view_vec: Option<Point>) -> Colour;
+    fn illuminate<S: Scene>(&self, scene: &S, point: Point, normal: Point, material: &Material, view_vec: Option<Point>) -> Colour;
     fn from(&mut self) -> &mut Point;
 }
 
@@ -19,7 +19,7 @@ pub struct PointLight {
 }
 
 impl Light for PointLight {
-    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: &Material, view_vec: Option<Point>) -> Colour {
+    fn illuminate<S: Scene>(&self, scene: &S, point: Point, normal: Point, material: &Material, view_vec: Option<Point>) -> Colour {
         let mut result = Colour::black();
 
         let mut light_vec = self.from - point;
@@ -32,7 +32,7 @@ impl Light for PointLight {
         // Normalise
         light_vec = light_vec.normalise();
         let light_ray = Ray::new(point, light_vec);
-        if intersects(scene, &light_ray).is_some() {
+        if scene.intersects(&light_ray).is_some() {
             // In shadow.
             return result;
         }
@@ -106,7 +106,7 @@ impl Clone for SphereLight {
 }
 
 impl Light for SphereLight {
-    fn illuminate(&self, scene: &Scene, point: Point, normal: Point, material: &Material, _view_vec: Option<Point>) -> Colour {
+    fn illuminate<S: Scene>(&self, scene: &S, point: Point, normal: Point, material: &Material, _view_vec: Option<Point>) -> Colour {
         let mut result = Colour::black();
 
         for _ in 0..self.samples {
@@ -116,7 +116,7 @@ impl Light for SphereLight {
             }
             let light_vec = (light_point - point).normalise();
             let light_ray = Ray::new(point, light_vec);
-            if intersects(scene, &light_ray).is_some() {
+            if scene.intersects(&light_ray).is_some() {
                 // In shadow.
                 continue;
             }

@@ -47,228 +47,58 @@ fn max(v1: f32, v2: f32) -> f32 {
     unsafe { max_intrinsic(v1, v2) }
 }
 
+pub trait Scene: Clone + Send + 'static {
+    fn intersects<'a>(&'a self, ray: &Ray) -> Option<Intersection<'a>>;
+    fn pre_compute(&mut self);
+    fn translate(&mut self, v: Point);
+    fn transform(&mut self, m: &Matrix);
+    fn eye(&self) -> &Eye;
+    fn ambient_light(&self) -> Colour;
+    fn background(&self) -> Colour;
+    fn for_each_point_light<F>(&self, f: F) -> Colour
+        where F: Fn(&PointLight) -> Colour;
+    fn for_each_sphere_light<F>(&self, f: F) -> Colour
+        where F: Fn(&SphereLight) -> Colour;
 
-fn init() -> Scene {
-    let mut balls1: Vec<Sphere> = vec![];
-    for i in 0..3 {
-        for j in 0..3 {
-            balls1.push(Sphere::new(Point::new(i as f32 * 50.0 - 50.0, 0.0, j as f32 * 50.0 - 50.0), (i + j + 1) as f32 * 5.0, Material::red_plastic()));
-        }
-    }
+    // Here we do some transforms to the world to make it easier to render.
+    fn world_transform(&mut self) {
+        // Translate the world so that eye.from is at the origin.
+        let from = self.eye().from;
+        self.translate(from);
 
-    let mut balls2: Vec<Sphere> = vec![];
-    for i in 0..2 {
-        for j in 0..2 {
-            balls2.push(Sphere::new(Point::new(i as f32 * 50.0 - 25.0, 50.0, j as f32 * 50.0 - 25.0), 20.0, Material::blue_plastic()));
-        }
-    }
+        // Rotate the world so that eye.at is on the z-axis (i.e., eye.at.x == eye.at.y == 0).
+        // We first rotate around the y-axis until we are aligned with the z-axis,
+        // then around the z-axis until we are on the x/z plane.
+        // Compute the rotation matrix.
+        let rot_y_matrix = {
+            let eye = self.eye();
+            let hyp_y = (eye.at.x() * eye.at.x() + eye.at.z() * eye.at.z()).sqrt();
+            let sin_y = eye.at.x() / hyp_y;
+            let cos_y = eye.at.z() / hyp_y;
+            [[cos_y, 0.0, sin_y], [0.0, 1.0, 0.0], [-sin_y, 0.0, cos_y]]
+        };
+        self.transform(&rot_y_matrix);
 
-    let mut triangles: Vec<Polygon> = vec![];
-    triangles.push(Polygon::new(Point::new(0.0, -50.0, 0.0),
-                                Point::new(0.0, -50.0, -100.0),
-                                Point::new(-100.0, -50.0, 0.0),
-                                Material::matte_grey()));
-    triangles.push(Polygon::new(Point::new(0.0, -50.0, -100.0),
-                                Point::new(-100.0, -50.0, -100.0),
-                                Point::new(-100.0, -50.0, 0.0),
-                                Material::matte_grey()));
-    triangles.push(Polygon::new(Point::new(100.0, -50.0, 0.0),
-                                Point::new(100.0, -50.0, -100.0),
-                                Point::new(0.0, -50.0, 0.0),
-                                Material::mirror()));
-    triangles.push(Polygon::new(Point::new(100.0, -50.0, -100.0),
-                                Point::new(0.0, -50.0, -100.0),
-                                Point::new(0.0, -50.0, 0.0),
-                                Material::mirror()));
-    triangles.push(Polygon::new(Point::new(0.0, -50.0, 100.0),
-                                Point::new(0.0, -50.0, 0.0),
-                                Point::new(-100.0, -50.0, 100.0),
-                                Material::mirror()));
-    triangles.push(Polygon::new(Point::new(0.0, -50.0, 0.0),
-                                Point::new(-100.0, -50.0, 0.0),
-                                Point::new(-100.0, -50.0, 100.0),
-                                Material::mirror()));
-    triangles.push(Polygon::new(Point::new(100.0, -50.0, 100.0),
-                                Point::new(100.0, -50.0, 0.0),
-                                Point::new(0.0, -50.0, 100.0),
-                                Material::matte_grey()));
-    triangles.push(Polygon::new(Point::new(100.0, -50.0, 0.0),
-                                Point::new(0.0, -50.0, 0.0),
-                                Point::new(0.0, -50.0, 100.0),
-                                Material::matte_grey()));
+        let rot_x_matrix = {
+            let eye = self.eye();
+            let hyp_x = (eye.at.y() * eye.at.y() + eye.at.z() * eye.at.z()).sqrt();
+            let sin_x = eye.at.y() / hyp_x;
+            let cos_x = eye.at.z() / hyp_x;
+            [[1.0, 0.0, 0.0], [0.0, cos_x, sin_x], [0.0, -sin_x, cos_x]]
+        };
+        self.transform(&rot_x_matrix);
 
-    // attenuation: { distance: 500, moderation: 0.5 }
-    let sl = SphereLight::new(Point::new(-60.0, 100.0, -80.0), 30.0, Colour::new(0.8, 0.8, 0.8));
-    let pl = PointLight::new(Point::new(60.0, 80.0, -80.0), Colour::new(0.2, 0.2, 0.2), None);
+        // println!("post-transform: {:?}, {:?}, {:?}",
+        //          self.point_lights[0].from(),
+        //          self.eye().from,
+        //          self.eye().at);
 
-    Scene {
-        balls1: Group::new(balls1),
-        balls2: Group::new(balls2),
-        triangles: Group::new(triangles),
-        point_lights: vec![pl],
-        sphere_lights: vec![sl],
-
-        ambient_light: Colour::new(0.2, 0.2, 0.2),
-        eye: Eye {
-            from: Point::new(140.0, 100.0, -300.0),
-            at: Point::new(0.0, 0.0, 0.0),
-            length: 70.0,
-            width: 50.0,
-            height: 50.0,
-        },
-        background: Colour::black(),
-    }
-}
-
-struct Rendered {
-    data: UnsafeCell<Vec<u8>>,
-    width: u32,
-    height: u32,
-}
-
-unsafe impl Sync for Rendered {}
-
-impl Rendered {
-    fn new(width: u32, height: u32) -> Rendered {
-        Rendered {
-            data: UnsafeCell::new(vec![0; (width * height * 4) as usize]),
-            width: width,
-            height: height,
-        }
-    }
-
-    fn set_pixel(&self, x: u32, y: u32, colour: Colour) {
-        let offset = 4 * (x + y * self.width) as usize;
-        unsafe {
-            (&mut *self.data.get())[offset] = min(colour.r() * 255.0, 255.0) as u8;
-            (&mut *self.data.get())[offset + 1] = min(colour.g() * 255.0, 255.0) as u8;
-            (&mut *self.data.get())[offset + 2] = min(colour.b() * 255.0, 255.0) as u8;
-            (&mut *self.data.get())[offset + 3] = 255;
-        }
-    }
-}
-
-fn render(mut scene: Scene) -> Arc<Rendered> {
-    let result = Arc::new(Rendered::new(800, 800));
-
-    world_transform(&mut scene);
-
-    scene.render(result.clone());
-
-    // println!("transform: " + (t2 - t1) + "ms");
-    // println!("rendering: " + (t3 - t2) + "ms");
-    // println!("write to canvas: " + (t4 - t3) + "ms");
-
-    result
-}
-
-// Here we do some transforms to the world to make it easier to render.
-fn world_transform(scene: &mut Scene) {
-    // Translate the world so that eye.from is at the origin.
-    let from = scene.eye.from;
-    scene.balls1.translate(from);
-    scene.balls2.translate(from);
-    scene.triangles.translate(from);
-    for l in &mut scene.point_lights {
-        *l.from() -= from;
-    }
-    for l in &mut scene.sphere_lights {
-        *l.from() -= from;
-    }
-    scene.eye.at -= from;
-    // Should be (0, 0, 0);
-    scene.eye.from -= from;
-
-    // Rotate the world so that eye.at is on the z-axis (i.e., eye.at.x == eye.at.y == 0).
-    // We first rotate around the y-axis until we are aligned with the z-axis,
-    // then around the z-axis until we are on the x/z plane.
-    // Compute the rotation matrix.
-    let hyp_y = (scene.eye.at.x() * scene.eye.at.x() + scene.eye.at.z() * scene.eye.at.z()).sqrt();
-    let sin_y = scene.eye.at.x() / hyp_y;
-    let cos_y = scene.eye.at.z() / hyp_y;
-    let rot_y_matrix = [[cos_y, 0.0, sin_y],
-                        [0.0, 1.0, 0.0],
-                        [-sin_y, 0.0, cos_y]];
-    scene.transform(&rot_y_matrix);
-
-    let hyp_x = (scene.eye.at.y() * scene.eye.at.y() + scene.eye.at.z() * scene.eye.at.z()).sqrt();
-    let sin_x = scene.eye.at.y() / hyp_x;
-    let cos_x = scene.eye.at.z() / hyp_x;
-    let rot_x_matrix = [[1.0, 0.0, 0.0],
-                        [0.0, cos_x, sin_x],
-                        [0.0, -sin_x, cos_x]];
-    scene.transform(&rot_x_matrix);
-
-    // println!("post-transform: {:?}, {:?}, {:?}",
-    //          scene.point_lights[0].from(),
-    //          scene.eye.from,
-    //          scene.eye.at);
-
-    // At this stage we are looking directly down the Z-axis from the origin to positive infinity.
-}
-
-fn trace(ray: Ray, depth: u8, scene: &Scene) -> Colour {
-    if depth >= RAY_DEPTH {
-        return Colour::black();
-    }
-
-    match intersects(scene, &ray) {
-        Some(intersection) => {
-            let material = &intersection.object.material();
-            let mut result = Colour::black();
-
-            let ambient = material.ambient * scene.ambient_light;
-            result += ambient;
-
-            let reflect_vec = ray.direction - intersection.normal * dot(ray.direction, intersection.normal) * 2.0;
-            let reflect_ray = Ray::new(intersection.point, reflect_vec);
-            let reflected = trace(reflect_ray, depth + 1, scene);
-            result += material.reflected * reflected;
-
-            for light in &scene.point_lights {
-                // Only compute specular illumination for primary rays.
-                let view_vec = if depth == 0 {
-                    Some(ray.direction)
-                } else {
-                    None
-                };
-                result += light.illuminate(scene, intersection.point, intersection.normal, material, view_vec);
-            }
-            for light in &scene.sphere_lights {
-                // Only compute specular illumination for primary rays.
-                let view_vec = if depth == 0 {
-                    Some(ray.direction)
-                } else {
-                    None
-                };
-                result += light.illuminate(scene, intersection.point, intersection.normal, material, view_vec);
-            }
-
-            result
-        }
-        None => scene.background,
-    }
-}
-
-fn intersects<'a>(scene: &'a Scene, ray: &Ray) -> Option<Intersection<'a>> {
-    let balls1 = scene.balls1.intersects(ray);
-    let balls2 = scene.balls2.intersects(ray);
-    let triangles = scene.triangles.intersects(ray);
-
-    balls1.into_iter().chain(balls2.into_iter()).chain(triangles.into_iter()).min()
-}
-
-impl Scene {
-    fn pre_compute(&mut self) {
-        self.balls1.pre_compute();
-        self.balls2.pre_compute();
-        self.triangles.pre_compute();
-        for l in &mut self.sphere_lights {
-            l.pre_compute();
-        }
+        // At this stage we are looking directly down the Z-axis from the origin to positive infinity.
     }
 
     fn render(mut self, dest: Arc<Rendered>) {
+        self.world_transform();
+
         // We must translate and scale the pixel on to the image plane.
         let (width, height) = {
             (dest.width, dest.height)
@@ -276,8 +106,8 @@ impl Scene {
 
         let trans_x = width as f32 / 2.0;
         let trans_y = height as f32 / 2.0;
-        let scale_x = self.eye.width / width as f32;
-        let scale_y = -self.eye.height / height as f32;
+        let scale_x = self.eye().width / width as f32;
+        let scale_y = -self.eye().height / height as f32;
 
         let sub_const = (SUPER_SAMPLES * 2) as f32;
         let sub_pixel_x = scale_x / sub_const;
@@ -310,9 +140,10 @@ impl Scene {
                         for _ in 0..SUPER_SAMPLES {
                             let mut xx = image_x - (scale_x / 2.0);
                             for _ in 0..SUPER_SAMPLES {
-                                // Note that due to the world transform, eye.from is the origin.
-                                let p = Point::new(xx, yy, this.eye.length).normalise();
-                                let ray = Ray::new(this.eye.from, p);
+                                // Note that due to the world transform, eye.from should be the origin.
+                                let eye = this.eye();
+                                let p = Point::new(xx, yy, eye.length).normalise();
+                                let ray = Ray::new(eye.from, p);
                                 sum += trace(ray, 0, &this);
 
                                 xx += sub_pixel_x;
@@ -343,6 +174,125 @@ impl Scene {
             thread::park();
         }
     }
+}
+
+#[derive(Clone)]
+struct Scene1 {
+    balls1: Group<Sphere>,
+    balls2: Group<Sphere>,
+    triangles: Group<Polygon>,
+    sphere_lights: Vec<SphereLight>,
+    point_lights: Vec<PointLight>,
+    ambient_light: Colour,
+    eye: Eye,
+    background: Colour,
+}
+
+impl Scene1 {
+    fn new() -> Scene1 {
+        let mut balls1: Vec<Sphere> = vec![];
+        for i in 0..3 {
+            for j in 0..3 {
+                balls1.push(Sphere::new(Point::new(i as f32 * 50.0 - 50.0, 0.0, j as f32 * 50.0 - 50.0), (i + j + 1) as f32 * 5.0, Material::red_plastic()));
+            }
+        }
+
+        let mut balls2: Vec<Sphere> = vec![];
+        for i in 0..2 {
+            for j in 0..2 {
+                balls2.push(Sphere::new(Point::new(i as f32 * 50.0 - 25.0, 50.0, j as f32 * 50.0 - 25.0), 20.0, Material::blue_plastic()));
+            }
+        }
+
+        let mut triangles: Vec<Polygon> = vec![];
+        triangles.push(Polygon::new(Point::new(0.0, -50.0, 0.0),
+                                    Point::new(0.0, -50.0, -100.0),
+                                    Point::new(-100.0, -50.0, 0.0),
+                                    Material::matte_grey()));
+        triangles.push(Polygon::new(Point::new(0.0, -50.0, -100.0),
+                                    Point::new(-100.0, -50.0, -100.0),
+                                    Point::new(-100.0, -50.0, 0.0),
+                                    Material::matte_grey()));
+        triangles.push(Polygon::new(Point::new(100.0, -50.0, 0.0),
+                                    Point::new(100.0, -50.0, -100.0),
+                                    Point::new(0.0, -50.0, 0.0),
+                                    Material::mirror()));
+        triangles.push(Polygon::new(Point::new(100.0, -50.0, -100.0),
+                                    Point::new(0.0, -50.0, -100.0),
+                                    Point::new(0.0, -50.0, 0.0),
+                                    Material::mirror()));
+        triangles.push(Polygon::new(Point::new(0.0, -50.0, 100.0),
+                                    Point::new(0.0, -50.0, 0.0),
+                                    Point::new(-100.0, -50.0, 100.0),
+                                    Material::mirror()));
+        triangles.push(Polygon::new(Point::new(0.0, -50.0, 0.0),
+                                    Point::new(-100.0, -50.0, 0.0),
+                                    Point::new(-100.0, -50.0, 100.0),
+                                    Material::mirror()));
+        triangles.push(Polygon::new(Point::new(100.0, -50.0, 100.0),
+                                    Point::new(100.0, -50.0, 0.0),
+                                    Point::new(0.0, -50.0, 100.0),
+                                    Material::matte_grey()));
+        triangles.push(Polygon::new(Point::new(100.0, -50.0, 0.0),
+                                    Point::new(0.0, -50.0, 0.0),
+                                    Point::new(0.0, -50.0, 100.0),
+                                    Material::matte_grey()));
+
+        // attenuation: { distance: 500, moderation: 0.5 }
+        let sl = SphereLight::new(Point::new(-60.0, 100.0, -80.0), 30.0, Colour::new(0.8, 0.8, 0.8));
+        let pl = PointLight::new(Point::new(60.0, 80.0, -80.0), Colour::new(0.2, 0.2, 0.2), None);
+
+        Scene1 {
+            balls1: Group::new(balls1),
+            balls2: Group::new(balls2),
+            triangles: Group::new(triangles),
+            point_lights: vec![pl],
+            sphere_lights: vec![sl],
+
+            ambient_light: Colour::new(0.2, 0.2, 0.2),
+            eye: Eye {
+                from: Point::new(140.0, 100.0, -300.0),
+                at: Point::new(0.0, 0.0, 0.0),
+                length: 70.0,
+                width: 50.0,
+                height: 50.0,
+            },
+            background: Colour::black(),
+        }
+    }
+}
+
+impl Scene for Scene1 {
+    fn intersects<'a>(&'a self, ray: &Ray) -> Option<Intersection<'a>> {
+        let balls1 = self.balls1.intersects(ray);
+        let balls2 = self.balls2.intersects(ray);
+        let triangles = self.triangles.intersects(ray);
+
+        balls1.into_iter().chain(balls2.into_iter()).chain(triangles.into_iter()).min()
+    }
+
+   fn pre_compute(&mut self) {
+        self.balls1.pre_compute();
+        self.balls2.pre_compute();
+        self.triangles.pre_compute();
+        for l in &mut self.sphere_lights {
+            l.pre_compute();
+        }
+    }
+
+    fn translate(&mut self, v: Point) {
+        self.balls1.translate(v);
+        self.balls2.translate(v);
+        self.triangles.translate(v);
+        for l in &mut self.point_lights {
+            *l.from() -= v;
+        }
+        for l in &mut self.sphere_lights {
+            *l.from() -= v;
+        }
+        self.eye.at -= v;
+        self.eye.from -= v;
+    }
 
     fn transform(&mut self, m: &Matrix) {
         self.balls1.transform(m);
@@ -355,6 +305,106 @@ impl Scene {
             *l.from() = l.from().post_mult(m);
         }
         self.eye.at = self.eye.at.post_mult(m);
+    }
+
+    fn eye(&self) -> &Eye {
+        &self.eye
+    }
+
+    fn ambient_light(&self) -> Colour {
+        self.ambient_light
+    }
+
+    fn background(&self) -> Colour {
+        self.background
+    }
+
+    fn for_each_point_light<F: Fn(&PointLight) -> Colour>(&self, f: F) -> Colour {
+        let mut result = Colour::black();
+        for light in &self.point_lights {
+            result += f(light);
+        }
+        result
+    }
+
+    fn for_each_sphere_light<F: Fn(&SphereLight) -> Colour>(&self, f: F) -> Colour {
+        let mut result = Colour::black();
+        for light in &self.sphere_lights {
+            result += f(light);
+        }
+        result
+    }
+}
+
+pub struct Rendered {
+    data: UnsafeCell<Vec<u8>>,
+    width: u32,
+    height: u32,
+}
+
+unsafe impl Sync for Rendered {}
+
+impl Rendered {
+    fn new(width: u32, height: u32) -> Rendered {
+        Rendered {
+            data: UnsafeCell::new(vec![0; (width * height * 4) as usize]),
+            width: width,
+            height: height,
+        }
+    }
+
+    fn set_pixel(&self, x: u32, y: u32, colour: Colour) {
+        let offset = 4 * (x + y * self.width) as usize;
+        unsafe {
+            (&mut *self.data.get())[offset] = min(colour.r() * 255.0, 255.0) as u8;
+            (&mut *self.data.get())[offset + 1] = min(colour.g() * 255.0, 255.0) as u8;
+            (&mut *self.data.get())[offset + 2] = min(colour.b() * 255.0, 255.0) as u8;
+            (&mut *self.data.get())[offset + 3] = 255;
+        }
+    }
+}
+
+// TODO uses of scene
+fn trace<S: Scene>(ray: Ray, depth: u8, scene: &S) -> Colour {
+    if depth >= RAY_DEPTH {
+        return Colour::black();
+    }
+
+    match scene.intersects(&ray) {
+        Some(intersection) => {
+            let material = &intersection.object.material();
+            let mut result = Colour::black();
+
+            let ambient = material.ambient * scene.ambient_light();
+            result += ambient;
+
+            let reflect_vec = ray.direction - intersection.normal * dot(ray.direction, intersection.normal) * 2.0;
+            let reflect_ray = Ray::new(intersection.point, reflect_vec);
+            let reflected = trace(reflect_ray, depth + 1, scene);
+            result += material.reflected * reflected;
+
+            result += scene.for_each_point_light(|l| {
+                // Only compute specular illumination for primary rays.
+                let view_vec = if depth == 0 {
+                    Some(ray.direction)
+                } else {
+                    None
+                };
+                l.illuminate(scene, intersection.point, intersection.normal, material, view_vec)
+            });
+            result += scene.for_each_sphere_light(|l| {
+                // Only compute specular illumination for primary rays.
+                let view_vec = if depth == 0 {
+                    Some(ray.direction)
+                } else {
+                    None
+                };
+                l.illuminate(scene, intersection.point, intersection.normal, material, view_vec)
+            });
+
+            result
+        }
+        None => scene.background(),
     }
 }
 
@@ -410,19 +460,7 @@ pub struct Attenuation {
 }
 
 #[derive(Clone)]
-pub struct Scene {
-    balls1: Group<Sphere>,
-    balls2: Group<Sphere>,
-    triangles: Group<Polygon>,
-    sphere_lights: Vec<SphereLight>,
-    point_lights: Vec<PointLight>,
-    ambient_light: Colour,
-    eye: Eye,
-    background: Colour,
-}
-
-#[derive(Clone)]
-struct Eye {
+pub struct Eye {
     from: Point,
     at: Point,
     length: f32,
@@ -431,11 +469,12 @@ struct Eye {
 }
 
 fn run(file_name: &str) {
-    let scene = init();
+    let scene = Scene1::new();
+    let data = Arc::new(Rendered::new(800, 800));
 
     let t = Instant::now();
 
-    let data = render(scene);
+    scene.render(data.clone());
 
     let t = t.elapsed();
 
@@ -445,7 +484,7 @@ fn run(file_name: &str) {
         encoder.encode(&*data.data.get(), data.width, data.height, ColorType::RGBA(8)).unwrap();
     }
 
-    println!("Time: {}s", t.as_secs() as f32 + t.subsec_nanos() as f32 / 1_000_000_000.0);
+    println!("Time: {}s", t.as_secs() as f64 + t.subsec_nanos() as f64 / 1_000_000_000.0);
 }
 
 fn main() {
