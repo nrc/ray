@@ -12,7 +12,7 @@ pub struct Sphere {
     bounding_box: Aabb,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Polygon {
     p1: Point,
     p2: Point,
@@ -39,9 +39,13 @@ impl Aabb {
 
         max >= min
     }
+
+    fn contains_point(&self, p: Point) -> bool {
+        p >= self.min && p <= self.max
+    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct PolygonInternals {
     normal: Point,
     u: Point,
@@ -59,6 +63,7 @@ pub trait Object: Send {
     fn material(&self) -> &Material;
     fn pre_compute(&mut self);
     fn bounding_box(&self) -> &Aabb;
+    fn overlaps(&self, p: &Aabb) -> bool;
 }
 
 impl Sphere {
@@ -118,6 +123,9 @@ impl Object for Sphere {
 
     fn bounding_box(&self) -> &Aabb {
         &self.bounding_box
+    }
+    fn overlaps(&self, _bb: &Aabb) -> bool {
+        unimplemented!();
     }
 }
 
@@ -218,18 +226,30 @@ impl Object for Polygon {
     fn bounding_box(&self) -> &Aabb {
         &self.bounding_box
     }
+
+    // This isn't quite correct, since it is possible for a polygon to overlap
+    // a box even if none of the polygon's points are inside the box. However,
+    // for all uses of this function, that is OK - the polygon will be caught by
+    // a different box.
+    fn overlaps(&self, bb: &Aabb) -> bool {
+        bb.contains_point(self.p1) ||
+        bb.contains_point(self.p2) ||
+        bb.contains_point(self.p3)
+    }
 }
 
 #[derive(Clone)]
 pub struct Group<T: Object> {
     objects: Vec<T>,
+    div_objects: Vec<Group<T>>,
     bounding_box: Aabb,
 }
 
-impl<T: Object> Group<T> {
+impl<T: Object + ::std::fmt::Debug> Group<T> {
     pub fn new(objects: Vec<T>) -> Group<T> {
         Group {
             objects: objects,
+            div_objects: vec![],
             bounding_box: Aabb::new(Point::new(0.0, 0.0, 0.0), Point::new(0.0, 0.0, 0.0)),
         }
     }
@@ -244,13 +264,83 @@ impl<T: Object> Group<T> {
             max = max.max(bb.max);
         }
         self.bounding_box = Aabb::new(min, max);
+
+        if self.objects.len() < 100 {
+            return;
+        }
+
+        let mid = (min + max) / 2.0;
+        let mut groups = vec![Group {
+                                  objects: vec![],
+                                  div_objects: vec![],
+                                  bounding_box: Aabb::new(Point::new(min.x(), min.y(), min.z()), Point::new(mid.x(), mid.y(), mid.z())),
+                              },
+                              Group {
+                                  objects: vec![],
+                                  div_objects: vec![],
+                                  bounding_box: Aabb::new(Point::new(mid.x(), min.y(), min.z()), Point::new(max.x(), mid.y(), mid.z())),
+                              },
+                              Group {
+                                  objects: vec![],
+                                  div_objects: vec![],
+                                  bounding_box: Aabb::new(Point::new(min.x(), min.y(), mid.z()), Point::new(mid.x(), mid.y(), max.z())),
+                              },
+                              Group {
+                                  objects: vec![],
+                                  div_objects: vec![],
+                                  bounding_box: Aabb::new(Point::new(mid.x(), min.y(), mid.z()), Point::new(max.x(), mid.y(), max.z())),
+                              },
+                              Group {
+                                  objects: vec![],
+                                  div_objects: vec![],
+                                  bounding_box: Aabb::new(Point::new(min.x(), mid.y(), min.z()), Point::new(mid.x(), max.y(), mid.z())),
+                              },
+                              Group {
+                                  objects: vec![],
+                                  div_objects: vec![],
+                                  bounding_box: Aabb::new(Point::new(mid.x(), mid.y(), min.z()), Point::new(max.x(), max.y(), mid.z())),
+                              },
+                              Group {
+                                  objects: vec![],
+                                  div_objects: vec![],
+                                  bounding_box: Aabb::new(Point::new(min.x(), mid.y(), mid.z()), Point::new(mid.x(), max.y(), max.z())),
+                              },
+                              Group {
+                                  objects: vec![],
+                                  div_objects: vec![],
+                                  bounding_box: Aabb::new(Point::new(mid.x(), mid.y(), mid.z()), Point::new(max.x(), max.y(), max.z())),
+                              }];
+        'outer: for o in self.objects.drain(..) {
+            for g in &mut groups {
+                if o.overlaps(&g.bounding_box) {
+                    g.objects.push(o);
+                    continue 'outer;
+                }
+            }
+            unreachable!("Object did not fit in any group");
+        }
+
+        // Extend the bounding box to cover all the polygons.
+        for g in &mut groups {
+            for o in &g.objects {
+                let bb = o.bounding_box();
+                min = g.bounding_box.min.min(bb.min);
+                max = g.bounding_box.max.max(bb.max);
+                g.bounding_box = Aabb::new(min, max);
+            }
+        }
+        self.div_objects = groups;
     }
 
     pub fn intersects<'a>(&'a self, ray: &Ray) -> Option<Intersection<'a>> {
         if !self.bounding_box.intersects(ray) {
             return None;
         }
-        self.objects.iter().filter_map(|o| o.intersects(ray)).min()
+        self.div_objects
+            .iter()
+            .filter_map(|o| o.intersects(ray))
+            .chain(self.objects.iter().filter_map(|o| o.intersects(ray)))
+            .min()
     }
 
     pub fn translate(&mut self, v: Point) {

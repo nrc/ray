@@ -1,5 +1,6 @@
 use simd::f32x4;
 use std::ops::{Mul, Div, Add, Sub, AddAssign, MulAssign, SubAssign, DivAssign};
+use std::cmp::{PartialEq, PartialOrd, Ordering};
 
 use {min, max};
 
@@ -67,6 +68,45 @@ impl Point {
 
     pub fn z(self) -> f32 {
         self.data.extract(2)
+    }
+}
+
+impl PartialEq for Point {
+    fn eq(&self, other: &Point) -> bool {
+        self.data.eq(other.data).all()
+    }
+}
+
+impl PartialOrd for Point {
+    fn partial_cmp(&self, other: &Point) -> Option<Ordering> {
+        if self == other {
+            Some(Ordering::Equal)
+        } else {
+            // SIMD seems to be buggy here :-(
+            let mut lhs = [0.0; 4];
+            self.data.store(&mut lhs, 0);
+            let mut rhs = [0.0; 4];
+            other.data.store(&mut rhs, 0);
+
+            let mut le = true;
+            let mut ge = true;
+            for i in 0..3 {
+                if lhs[i] > rhs[i] {
+                    le = false;
+                }
+                if lhs[i] < rhs[i] {
+                    ge = false;
+                }
+            }
+
+            if le {
+                Some(Ordering::Less)
+            } else if ge {
+                Some(Ordering::Greater)
+            } else {
+                None
+            }
+        }
     }
 }
 

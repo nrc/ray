@@ -1,3 +1,4 @@
+#![feature(type_ascription)]
 #![feature(proc_macro)]
 #![feature(link_llvm_intrinsics)]
 
@@ -391,6 +392,9 @@ impl Scene2 {
     fn new() -> Scene2 {
         let ball1 = Scene2::ball(40.0, Point::new(50.0, 0.0, 50.0), Material::red_plastic());
         let ball2 = Scene2::ball(40.0, Point::new(-50.0, 20.0, -50.0), Material::blue_plastic());
+        // let mut ball1 = Scene2::ball(40.0, Point::new(50.0, 0.0, 50.0), Material::red_plastic());
+        // ball1.append(&mut Scene2::ball(40.0, Point::new(-50.0, 20.0, -50.0), Material::blue_plastic()));
+        // let ball2 = vec![];
 
         let mut base: Vec<Polygon> = vec![];
         base.push(Polygon::new(Point::new(0.0, -50.0, 0.0),
