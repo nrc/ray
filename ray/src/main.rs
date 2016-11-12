@@ -336,6 +336,170 @@ impl Scene for Scene1 {
     }
 }
 
+#[derive(Clone)]
+struct Scene2 {
+    ball1: Group<Polygon>,
+    ball2: Group<Polygon>,
+    base: Group<Polygon>,
+    light: PointLight,
+    ambient_light: Colour,
+    eye: Eye,
+    background: Colour,
+}
+
+impl Scene2 {
+    // Make a ball out of polygons
+    fn ball(r: f32, centre: Point, m: Material) -> Vec<Polygon> {
+        let mut result: Vec<Polygon> = vec![];
+        const N: usize = 10;
+        const THETA: f32 = ::std::f32::consts::PI / (2 * N) as f32;
+
+        for i in 0..N {
+            let y1 = r * (i as f32 * THETA).sin();
+            let y2 = r * ((i + 1) as f32 * THETA).sin();
+            let r1 = r * (i as f32 * THETA).cos();
+            let r2 = r * ((i + 1) as f32 * THETA).cos();
+
+            for j in 0..4 * N {
+                let x1 = (j as f32 * THETA).cos();
+                let x2 = ((j + 1) as f32 * THETA).cos();
+                let z1 = (j as f32 * THETA).sin();
+                let z2 = ((j + 1) as f32 * THETA).sin();
+
+                let p1 = Point::new(r2 * x1, y2, r2 * z1) + centre;
+                let p2 = Point::new(r2 * x2, y2, r2 * z2) + centre;
+                let p3 = Point::new(r1 * x2, y1, r1 * z2) + centre;
+                let p4 = Point::new(r1 * x1, y1, r1 * z1) + centre;
+                if i < N - 1 {
+                    result.push(Polygon::new(p1, p2, p3, m.clone()));
+                }
+                result.push(Polygon::new(p3, p4, p1, m.clone()));
+
+                let p1 = Point::new(r2 * x1, -y2, r2 * z1) + centre;
+                let p2 = Point::new(r2 * x2, -y2, r2 * z2) + centre;
+                let p3 = Point::new(r1 * x2, -y1, r1 * z2) + centre;
+                let p4 = Point::new(r1 * x1, -y1, r1 * z1) + centre;
+                if i < N - 1 {
+                    result.push(Polygon::new(p2, p1, p4, m.clone()));
+                }
+                result.push(Polygon::new(p4, p3, p2, m.clone()));
+            }
+        }
+        result
+    }
+
+    fn new() -> Scene2 {
+        let ball1 = Scene2::ball(40.0, Point::new(50.0, 0.0, 50.0), Material::red_plastic());
+        let ball2 = Scene2::ball(40.0, Point::new(-50.0, 20.0, -50.0), Material::blue_plastic());
+
+        let mut base: Vec<Polygon> = vec![];
+        base.push(Polygon::new(Point::new(0.0, -50.0, 0.0),
+                               Point::new(0.0, -50.0, -100.0),
+                               Point::new(-100.0, -50.0, 0.0),
+                               Material::matte_grey()));
+        base.push(Polygon::new(Point::new(0.0, -50.0, -100.0),
+                               Point::new(-100.0, -50.0, -100.0),
+                               Point::new(-100.0, -50.0, 0.0),
+                               Material::matte_grey()));
+        base.push(Polygon::new(Point::new(100.0, -50.0, 0.0),
+                               Point::new(100.0, -50.0, -100.0),
+                               Point::new(0.0, -50.0, 0.0),
+                               Material::mirror()));
+        base.push(Polygon::new(Point::new(100.0, -50.0, -100.0),
+                               Point::new(0.0, -50.0, -100.0),
+                               Point::new(0.0, -50.0, 0.0),
+                               Material::mirror()));
+        base.push(Polygon::new(Point::new(0.0, -50.0, 100.0),
+                               Point::new(0.0, -50.0, 0.0),
+                               Point::new(-100.0, -50.0, 100.0),
+                               Material::mirror()));
+        base.push(Polygon::new(Point::new(0.0, -50.0, 0.0),
+                               Point::new(-100.0, -50.0, 0.0),
+                               Point::new(-100.0, -50.0, 100.0),
+                               Material::mirror()));
+        base.push(Polygon::new(Point::new(100.0, -50.0, 100.0),
+                               Point::new(100.0, -50.0, 0.0),
+                               Point::new(0.0, -50.0, 100.0),
+                               Material::matte_grey()));
+        base.push(Polygon::new(Point::new(100.0, -50.0, 0.0),
+                               Point::new(0.0, -50.0, 0.0),
+                               Point::new(0.0, -50.0, 100.0),
+                               Material::matte_grey()));
+
+        let pl = PointLight::new(Point::new(40.0, 10.0, -80.0), Colour::new(0.7, 0.7, 0.7), None);
+
+        Scene2 {
+            base: Group::new(base),
+            ball1: Group::new(ball1),
+            ball2: Group::new(ball2),
+            light: pl,
+
+            ambient_light: Colour::new(0.2, 0.2, 0.2),
+            eye: Eye {
+                from: Point::new(140.0, 100.0, -300.0),
+                at: Point::new(0.0, 0.0, 0.0),
+                length: 70.0,
+                width: 50.0,
+                height: 50.0,
+            },
+            background: Colour::black(),
+        }
+    }
+}
+
+impl Scene for Scene2 {
+    fn intersects<'a>(&'a self, ray: &Ray) -> Option<Intersection<'a>> {
+        let ball1 = self.ball1.intersects(ray);
+        let ball2 = self.ball2.intersects(ray);
+        let base = self.base.intersects(ray);
+
+        base.into_iter().chain(ball1.into_iter()).chain(ball2.into_iter()).min()
+    }
+
+   fn pre_compute(&mut self) {
+        self.ball1.pre_compute();
+        self.ball2.pre_compute();
+        self.base.pre_compute();
+    }
+
+    fn translate(&mut self, v: Point) {
+        self.ball1.translate(v);
+        self.ball2.translate(v);
+        self.base.translate(v);
+        *self.light.from() -= v;
+        self.eye.at -= v;
+        self.eye.from -= v;
+    }
+
+    fn transform(&mut self, m: &Matrix) {
+        self.ball1.transform(m);
+        self.ball2.transform(m);
+        self.base.transform(m);
+        *self.light.from() = self.light.from().post_mult(m);
+        self.eye.at = self.eye.at.post_mult(m);
+    }
+
+    fn eye(&self) -> &Eye {
+        &self.eye
+    }
+
+    fn ambient_light(&self) -> Colour {
+        self.ambient_light
+    }
+
+    fn background(&self) -> Colour {
+        self.background
+    }
+
+    fn for_each_point_light<F: Fn(&PointLight) -> Colour>(&self, f: F) -> Colour {
+        f(&self.light)
+    }
+
+    fn for_each_sphere_light<F: Fn(&SphereLight) -> Colour>(&self, _f: F) -> Colour {
+        Colour::black()
+    }
+}
+
 pub struct Rendered {
     data: UnsafeCell<Vec<u8>>,
     width: u32,
@@ -469,7 +633,8 @@ pub struct Eye {
 }
 
 fn run(file_name: &str) {
-    let scene = Scene1::new();
+    // let scene = Scene1::new();
+    let scene = Scene2::new();
     let data = Arc::new(Rendered::new(800, 800));
 
     let t = Instant::now();
