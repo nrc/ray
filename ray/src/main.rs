@@ -505,6 +505,158 @@ impl Scene for Scene2 {
     }
 }
 
+#[derive(Clone)]
+struct Scene3 {
+    torus: Group<Polygon>,
+    base: Group<Polygon>,
+    light: PointLight,
+    ambient_light: Colour,
+    eye: Eye,
+    background: Colour,
+}
+
+impl Scene3 {
+    // Make a torus out of polygons
+    fn torus(r1: f32, r2: f32, centre: Point, m: Material) -> Vec<Polygon> {
+        let mut result: Vec<Polygon> = vec![];
+        const THETA: f32 = ::std::f32::consts::PI / (2 * SPHERE_CONST) as f32;
+
+        for i in 0..4 * SPHERE_CONST {
+            let sin_1 = (i as f32 * THETA).sin();
+            let cos_1 = (i as f32 * THETA).cos();
+            let sin_2 = ((i + 1) as f32 * THETA).sin();
+            let cos_2 = ((i + 1) as f32 * THETA).cos();
+            let m1 = [[cos_1, 0.0, sin_1], [0.0, 1.0, 0.0], [-sin_1, 0.0, cos_1]];
+            let m2 = [[cos_2, 0.0, sin_2], [0.0, 1.0, 0.0], [-sin_2, 0.0, cos_2]];
+
+            for j in 0..4 * SPHERE_CONST {
+                // Compute the points on the circle in the z plane
+                let p1 = Point::new(r2 * (j as f32 * THETA).cos() + r1,
+                                    r2 * (j as f32 * THETA).sin(),
+                                    0.0);
+                let p2 = Point::new(r2 * ((j + 1) as f32 * THETA).cos() + r1,
+                                    r2 * ((j + 1) as f32 * THETA).sin(),
+                                    0.0);
+
+                // Rotate about the y-axis i * THETA rads and translate by centre
+                let p3 = p2.post_mult(&m2) + centre;
+                let p4 = p1.post_mult(&m2) + centre;
+                let p1 = p1.post_mult(&m1) + centre;
+                let p2 = p2.post_mult(&m1) + centre;
+
+                result.push(Polygon::new(p1, p2, p3, m.clone()));
+                result.push(Polygon::new(p3, p4, p1, m.clone()));
+            }
+        }
+        result
+    }
+
+    fn new() -> Scene3 {
+        let torus = Scene3::torus(40.0, 20.0, Point::new(20.0, 0.0, -20.0), Material::red_plastic());
+
+        let mut base: Vec<Polygon> = vec![];
+        base.push(Polygon::new(Point::new(0.0, -50.0, 0.0),
+                               Point::new(0.0, -50.0, -100.0),
+                               Point::new(-100.0, -50.0, 0.0),
+                               Material::matte_grey()));
+        base.push(Polygon::new(Point::new(0.0, -50.0, -100.0),
+                               Point::new(-100.0, -50.0, -100.0),
+                               Point::new(-100.0, -50.0, 0.0),
+                               Material::matte_grey()));
+        base.push(Polygon::new(Point::new(100.0, -50.0, 0.0),
+                               Point::new(100.0, -50.0, -100.0),
+                               Point::new(0.0, -50.0, 0.0),
+                               Material::mirror()));
+        base.push(Polygon::new(Point::new(100.0, -50.0, -100.0),
+                               Point::new(0.0, -50.0, -100.0),
+                               Point::new(0.0, -50.0, 0.0),
+                               Material::mirror()));
+        base.push(Polygon::new(Point::new(0.0, -50.0, 100.0),
+                               Point::new(0.0, -50.0, 0.0),
+                               Point::new(-100.0, -50.0, 100.0),
+                               Material::mirror()));
+        base.push(Polygon::new(Point::new(0.0, -50.0, 0.0),
+                               Point::new(-100.0, -50.0, 0.0),
+                               Point::new(-100.0, -50.0, 100.0),
+                               Material::mirror()));
+        base.push(Polygon::new(Point::new(100.0, -50.0, 100.0),
+                               Point::new(100.0, -50.0, 0.0),
+                               Point::new(0.0, -50.0, 100.0),
+                               Material::matte_grey()));
+        base.push(Polygon::new(Point::new(100.0, -50.0, 0.0),
+                               Point::new(0.0, -50.0, 0.0),
+                               Point::new(0.0, -50.0, 100.0),
+                               Material::matte_grey()));
+
+        let pl = PointLight::new(Point::new(40.0, 40.0, -80.0), Colour::new(0.7, 0.7, 0.7), None);
+
+        Scene3 {
+            base: Group::new(base),
+            torus: Group::new(torus),
+            light: pl,
+
+            ambient_light: Colour::new(0.2, 0.2, 0.2),
+            eye: Eye {
+                from: Point::new(140.0, 130.0, -300.0),
+                at: Point::new(0.0, 0.0, 0.0),
+                length: 70.0,
+                width: 50.0,
+                height: 50.0,
+            },
+            background: Colour::black(),
+        }
+    }
+}
+
+impl Scene for Scene3 {
+    fn intersects<'a>(&'a self, ray: &Ray) -> Option<Intersection<'a>> {
+        let torus = self.torus.intersects(ray);
+        let base = self.base.intersects(ray);
+
+        base.into_iter().chain(torus.into_iter()).min()
+    }
+
+   fn pre_compute(&mut self) {
+        self.torus.pre_compute();
+        self.base.pre_compute();
+    }
+
+    fn translate(&mut self, v: Point) {
+        self.torus.translate(v);
+        self.base.translate(v);
+        *self.light.from() -= v;
+        self.eye.at -= v;
+        self.eye.from -= v;
+    }
+
+    fn transform(&mut self, m: &Matrix) {
+        self.torus.transform(m);
+        self.base.transform(m);
+        *self.light.from() = self.light.from().post_mult(m);
+        self.eye.at = self.eye.at.post_mult(m);
+    }
+
+    fn eye(&self) -> &Eye {
+        &self.eye
+    }
+
+    fn ambient_light(&self) -> Colour {
+        self.ambient_light
+    }
+
+    fn background(&self) -> Colour {
+        self.background
+    }
+
+    fn for_each_point_light<F: Fn(&PointLight) -> Colour>(&self, f: F) -> Colour {
+        f(&self.light)
+    }
+
+    fn for_each_sphere_light<F: Fn(&SphereLight) -> Colour>(&self, _f: F) -> Colour {
+        Colour::black()
+    }
+}
+
 pub struct Rendered {
     data: UnsafeCell<Vec<u8>>,
     width: u32,
@@ -533,7 +685,6 @@ impl Rendered {
     }
 }
 
-// TODO uses of scene
 fn trace<S: Scene>(ray: Ray, depth: u8, scene: &S) -> Colour {
     if depth >= RAY_DEPTH {
         return Colour::black();
@@ -639,7 +790,7 @@ pub struct Eye {
 
 fn run(file_name: &str) {
     // let scene = Scene1::new();
-    let scene = Scene2::new();
+    let scene = Scene3::new();
     let data = Arc::new(Rendered::new(800, 800));
 
     let t = Instant::now();
