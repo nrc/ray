@@ -265,10 +265,16 @@ impl<T: Object + ::std::fmt::Debug> Group<T> {
         }
         self.bounding_box = Aabb::new(min, max);
 
-        if self.objects.len() < 100 {
+        self.split(0);
+    }
+
+    fn split(&mut self, depth: usize) {
+        if depth >= ::HBV_DEPTH || self.objects.len() < 60 {
             return;
         }
 
+        let min = self.bounding_box.min;
+        let max = self.bounding_box.max;
         let mid = (min + max) / 2.0;
         let mut groups = vec![Group {
                                   objects: vec![],
@@ -324,12 +330,17 @@ impl<T: Object + ::std::fmt::Debug> Group<T> {
         for g in &mut groups {
             for o in &g.objects {
                 let bb = o.bounding_box();
-                min = g.bounding_box.min.min(bb.min);
-                max = g.bounding_box.max.max(bb.max);
+                let min = g.bounding_box.min.min(bb.min);
+                let max = g.bounding_box.max.max(bb.max);
                 g.bounding_box = Aabb::new(min, max);
             }
         }
-        self.div_objects = groups;
+
+        self.div_objects = groups.into_iter().filter(|g| g.objects.len() > 0).collect();
+
+        for g in &mut self.div_objects {
+            g.split(depth + 1);
+        }
     }
 
     pub fn intersects<'a>(&'a self, ray: &Ray) -> Option<Intersection<'a>> {

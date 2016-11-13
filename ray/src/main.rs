@@ -31,6 +31,8 @@ mod point;
 mod objects;
 
 const RAY_DEPTH: u8 = 4;
+const HBV_DEPTH: usize = 5;
+const SPHERE_CONST: usize = 10;
 const SUPER_SAMPLES: u8 = 2;
 const THREADS: u32 = 4;
 
@@ -352,16 +354,15 @@ impl Scene2 {
     // Make a ball out of polygons
     fn ball(r: f32, centre: Point, m: Material) -> Vec<Polygon> {
         let mut result: Vec<Polygon> = vec![];
-        const N: usize = 10;
-        const THETA: f32 = ::std::f32::consts::PI / (2 * N) as f32;
+        const THETA: f32 = ::std::f32::consts::PI / (2 * SPHERE_CONST) as f32;
 
-        for i in 0..N {
+        for i in 0..SPHERE_CONST {
             let y1 = r * (i as f32 * THETA).sin();
             let y2 = r * ((i + 1) as f32 * THETA).sin();
             let r1 = r * (i as f32 * THETA).cos();
             let r2 = r * ((i + 1) as f32 * THETA).cos();
 
-            for j in 0..4 * N {
+            for j in 0..4 * SPHERE_CONST {
                 let x1 = (j as f32 * THETA).cos();
                 let x2 = ((j + 1) as f32 * THETA).cos();
                 let z1 = (j as f32 * THETA).sin();
@@ -371,7 +372,7 @@ impl Scene2 {
                 let p2 = Point::new(r2 * x2, y2, r2 * z2) + centre;
                 let p3 = Point::new(r1 * x2, y1, r1 * z2) + centre;
                 let p4 = Point::new(r1 * x1, y1, r1 * z1) + centre;
-                if i < N - 1 {
+                if i < SPHERE_CONST - 1 {
                     result.push(Polygon::new(p1, p2, p3, m.clone()));
                 }
                 result.push(Polygon::new(p3, p4, p1, m.clone()));
@@ -380,7 +381,7 @@ impl Scene2 {
                 let p2 = Point::new(r2 * x2, -y2, r2 * z2) + centre;
                 let p3 = Point::new(r1 * x2, -y1, r1 * z2) + centre;
                 let p4 = Point::new(r1 * x1, -y1, r1 * z1) + centre;
-                if i < N - 1 {
+                if i < SPHERE_CONST - 1 {
                     result.push(Polygon::new(p2, p1, p4, m.clone()));
                 }
                 result.push(Polygon::new(p4, p3, p2, m.clone()));
