@@ -13,6 +13,6 @@ panic = 'abort'
 [dependencies]
 image = "*"
 rand = "*"
-derive-new = "0.1"
+derive-new = "0.3"
 simd = "0.1"
 

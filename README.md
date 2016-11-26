@@ -22,4 +22,4 @@ To run the Rust version:
 cargo run --release -- out.png
 ```
 
-To run the JS/canvas version - open `ray.html` in your browser (and wait, or tweak the setttings so it renders in a reasonable amount of time).
+To run the JS/canvas version - open `ray.html` in your browser (and wait, or tweak the settings so it renders in a reasonable amount of time).
