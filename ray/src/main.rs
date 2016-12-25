@@ -793,19 +793,46 @@ fn run(file_name: &str) {
     let scene = Scene3::new();
     let data = Arc::new(Rendered::new(800, 800));
 
-    let t = Instant::now();
+    let mut results: [f64; 10] = [0.0; 10];
 
-    scene.render(data.clone());
+    // warm-up
+    scene.clone().render(data.clone());
 
-    let t = t.elapsed();
-
-    let file = File::create(file_name).unwrap();
-    let encoder = PNGEncoder::new(file);
-    unsafe {
-        encoder.encode(&*data.data.get(), data.width, data.height, ColorType::RGBA(8)).unwrap();
+    for r in &mut results {
+        let scene = scene.clone();
+        let t = Instant::now();
+        scene.render(data.clone());
+        let t = t.elapsed();
+        *r = t.as_secs() as f64 + t.subsec_nanos() as f64 / 1_000_000_000.0;
     }
 
-    println!("Time: {}s", t.as_secs() as f64 + t.subsec_nanos() as f64 / 1_000_000_000.0);
+    let mut sum = 0.0;
+    let mut min = ::std::f64::MAX;
+    for r in results.iter() {
+        sum += *r;
+        if *r < min {
+            min = *r;
+        }
+    }
+    let mean = sum / results.len() as f64;
+
+    let mut v_sum = 0.0;
+    for r in results.iter() {
+        let x = mean - *r;
+        v_sum += x * x;
+    }
+    let sd = f64::sqrt(v_sum / results.len() as f64);
+
+    // TODO variance
+    println!("min: {:.3}s, mean: {:.3}s, sd: {:.4}s", min, mean, sd);
+
+    // let file = File::create(file_name).unwrap();
+    // let encoder = PNGEncoder::new(file);
+    // unsafe {
+    //     encoder.encode(&*data.data.get(), data.width, data.height, ColorType::RGBA(8)).unwrap();
+    // }
+
+    // println!("Time: {}s", t.as_secs() as f64 + t.subsec_nanos() as f64 / 1_000_000_000.0);
 }
 
 fn main() {
