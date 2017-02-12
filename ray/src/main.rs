@@ -431,7 +431,7 @@ impl Scene2 {
                                Point::new(0.0, -50.0, 100.0),
                                Material::matte_grey()));
 
-        let pl = PointLight::new(Point::new(40.0, 10.0, -80.0), Colour::new(0.7, 0.7, 0.7), None);
+        let pl = PointLight::new(Point::new(40.0, 10.0, -80.0), Colour::new(1.7, 1.7, 1.7), None);
 
         Scene2 {
             base: Group::new(base),
@@ -677,12 +677,16 @@ impl Rendered {
     fn set_pixel(&self, x: u32, y: u32, colour: Colour) {
         let offset = 4 * (x + y * self.width) as usize;
         unsafe {
-            (&mut *self.data.get())[offset] = min(colour.r() * 255.0, 255.0) as u8;
-            (&mut *self.data.get())[offset + 1] = min(colour.g() * 255.0, 255.0) as u8;
-            (&mut *self.data.get())[offset + 2] = min(colour.b() * 255.0, 255.0) as u8;
+            (&mut *self.data.get())[offset] = (map_tone(colour.r()) * 255.0) as u8;
+            (&mut *self.data.get())[offset + 1] = (map_tone(colour.g()) * 255.0) as u8;
+            (&mut *self.data.get())[offset + 2] = (map_tone(colour.b()) * 255.0) as u8;
             (&mut *self.data.get())[offset + 3] = 255;
         }
     }
+}
+
+fn map_tone(input: f32) -> f32 {
+    input / (input + 1.0)
 }
 
 fn trace<S: Scene>(ray: Ray, depth: u8, scene: &S) -> Colour {
@@ -790,47 +794,47 @@ pub struct Eye {
 
 fn run(file_name: &str) {
     // let scene = Scene1::new();
-    let scene = Scene3::new();
+    let scene = Scene2::new();
     let data = Arc::new(Rendered::new(800, 800));
 
-    let mut results: [f64; 10] = [0.0; 10];
+    //let mut results: [f64; 10] = [0.0; 10];
 
     // warm-up
     scene.clone().render(data.clone());
 
-    for r in &mut results {
-        let scene = scene.clone();
-        let t = Instant::now();
-        scene.render(data.clone());
-        let t = t.elapsed();
-        *r = t.as_secs() as f64 + t.subsec_nanos() as f64 / 1_000_000_000.0;
-    }
-
-    let mut sum = 0.0;
-    let mut min = ::std::f64::MAX;
-    for r in results.iter() {
-        sum += *r;
-        if *r < min {
-            min = *r;
-        }
-    }
-    let mean = sum / results.len() as f64;
-
-    let mut v_sum = 0.0;
-    for r in results.iter() {
-        let x = mean - *r;
-        v_sum += x * x;
-    }
-    let sd = f64::sqrt(v_sum / results.len() as f64);
-
-    // TODO variance
-    println!("min: {:.3}s, mean: {:.3}s, sd: {:.4}s", min, mean, sd);
-
-    // let file = File::create(file_name).unwrap();
-    // let encoder = PNGEncoder::new(file);
-    // unsafe {
-    //     encoder.encode(&*data.data.get(), data.width, data.height, ColorType::RGBA(8)).unwrap();
+    // for r in &mut results {
+    //     let scene = scene.clone();
+    //     let t = Instant::now();
+    //     scene.render(data.clone());
+    //     let t = t.elapsed();
+    //     *r = t.as_secs() as f64 + t.subsec_nanos() as f64 / 1_000_000_000.0;
     // }
+
+    // let mut sum = 0.0;
+    // let mut min = ::std::f64::MAX;
+    // for r in results.iter() {
+    //     sum += *r;
+    //     if *r < min {
+    //         min = *r;
+    //     }
+    // }
+    // let mean = sum / results.len() as f64;
+
+    // let mut v_sum = 0.0;
+    // for r in results.iter() {
+    //     let x = mean - *r;
+    //     v_sum += x * x;
+    // }
+    // let sd = f64::sqrt(v_sum / results.len() as f64);
+
+    // // TODO variance
+    // println!("min: {:.3}s, mean: {:.3}s, sd: {:.4}s", min, mean, sd);
+
+    let file = File::create(file_name).unwrap();
+    let encoder = PNGEncoder::new(file);
+    unsafe {
+        encoder.encode(&*data.data.get(), data.width, data.height, ColorType::RGBA(8)).unwrap();
+    }
 
     // println!("Time: {}s", t.as_secs() as f64 + t.subsec_nanos() as f64 / 1_000_000_000.0);
 }
